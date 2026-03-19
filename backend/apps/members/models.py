@@ -63,6 +63,9 @@ class Member(models.Model):
             self.status = "active"
             self.save()
 
+    def display_id(self):
+        return f"M{self.id:04d}"
+
 class MemberPayment(models.Model):
     STATUS = [("paid","Paid"),("partial","Partial"),("pending","Pending")]
 
@@ -99,3 +102,16 @@ class MemberPayment(models.Model):
 
 
 '''
+    
+class MemberAttendance(models.Model):
+    member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="attendance")
+    date       = models.DateField(default=timezone.localdate)
+    check_in   = models.TimeField(default=timezone.now)
+    check_out  = models.TimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-date", "-check_in"]
+ 
+    def __str__(self):
+        return f"{self.member.name} — {self.date}"  

@@ -25,6 +25,8 @@ class StaffMember(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.role})"
+    def display_id(self):
+        return f"S{self.id:04d}"
 
 class StaffAttendance(models.Model):
     STATUS = [("present","Present"),("absent","Absent"),("half","Half Day"),("leave","Leave")]

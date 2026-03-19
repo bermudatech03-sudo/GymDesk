@@ -1,0 +1,278 @@
+/* ── Full screen kiosk ── */
+.kiosk {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  padding: 0 20px 24px;
+}
+
+.kiosk__grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(168,255,87,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(168,255,87,.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.kiosk__glow {
+  position: absolute; top: -80px; left: 50%;
+  transform: translateX(-50%);
+  width: 600px; height: 500px;
+  background: radial-gradient(circle, rgba(168,255,87,.07) 0%, transparent 65%);
+  border-radius: 50%; pointer-events: none;
+}
+
+/* Header */
+.kiosk__header {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 560px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+.kiosk__logo { display: flex; align-items: center; gap: 12px; }
+.kiosk__logo-mark {
+  width: 44px; height: 44px; border-radius: 11px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 22px;
+  font-weight: 800; color: #08080a;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.kiosk__logo-name {
+  font-family: var(--font-display); font-size: 18px;
+  font-weight: 800; color: var(--text1); letter-spacing: 1px;
+}
+.kiosk__logo-sub {
+  font-size: 10px; color: var(--accent); letter-spacing: 2px;
+  text-transform: uppercase; margin-top: 2px;
+}
+
+.kiosk__clock { text-align: right; }
+.kiosk__time {
+  font-family: var(--font-mono); font-size: 22px;
+  font-weight: 700; color: var(--accent); letter-spacing: 1px;
+}
+.kiosk__date { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+/* Panel */
+.kiosk__panel {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 480px;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* Card */
+.kiosk__card {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 36px 32px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.4);
+  text-align: center;
+}
+.kiosk__card--success { border-color: rgba(168,255,87,.4); }
+.kiosk__card--error   { border-color: rgba(255,91,91,.3); }
+
+.kiosk__card-icon {
+  font-size: 40px; color: var(--accent); line-height: 1;
+  margin-bottom: 4px;
+}
+.kiosk__card-title {
+  font-family: var(--font-display); font-size: 24px;
+  font-weight: 800; color: var(--text1);
+}
+.kiosk__card-sub {
+  font-size: 13px; color: var(--text3); line-height: 1.7;
+}
+.kiosk__card-sub code {
+  background: var(--surface2); padding: 1px 7px;
+  border-radius: 5px; color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+/* Input form */
+.kiosk__form {
+  display: flex; flex-direction: column;
+  gap: 12px; width: 100%; margin-top: 8px;
+}
+.kiosk__input {
+  background: var(--surface2);
+  border: 2px solid var(--border2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  font-size: 28px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  letter-spacing: 4px;
+  outline: none;
+  width: 100%;
+  transition: border-color .2s, box-shadow .2s;
+}
+.kiosk__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(168,255,87,.1);
+}
+.kiosk__input::placeholder { color: var(--text3); letter-spacing: 1px; font-size: 18px; }
+
+/* Buttons */
+.kiosk__btn {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 14px 28px; border-radius: 12px;
+  font-size: 15px; font-weight: 700; border: none;
+  cursor: pointer; transition: all .2s; min-height: 52px;
+  font-family: var(--font-body); width: 100%;
+}
+.kiosk__btn--primary {
+  background: var(--accent); color: #08080a;
+  box-shadow: 0 0 28px var(--accent-glow);
+}
+.kiosk__btn--primary:hover:not(:disabled) {
+  background: var(--accent2);
+  box-shadow: 0 0 44px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.kiosk__btn--primary:disabled { opacity: .5; cursor: not-allowed; }
+.kiosk__btn--secondary {
+  background: var(--surface2); color: var(--text2);
+  border: 1px solid var(--border2);
+}
+.kiosk__btn--secondary:hover { background: var(--surface3); color: var(--text1); }
+
+/* Person badge */
+.kiosk__person-badge {
+  font-size: 10px; font-weight: 800; letter-spacing: 3px;
+  padding: 4px 14px; border-radius: 100px;
+}
+.kiosk__person-badge--member {
+  background: rgba(168,255,87,.12); color: var(--accent);
+  border: 1px solid rgba(168,255,87,.3);
+}
+.kiosk__person-badge--staff {
+  background: rgba(45,255,195,.12); color: var(--teal);
+  border: 1px solid rgba(45,255,195,.3);
+}
+
+/* Avatar */
+.kiosk__avatar {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 36px;
+  font-weight: 800; color: #08080a;
+  box-shadow: 0 0 32px var(--accent-glow);
+  overflow: hidden;
+}
+.kiosk__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.kiosk__name {
+  font-family: var(--font-display); font-size: 28px;
+  font-weight: 800; color: var(--text1); margin: 0;
+}
+.kiosk__role  { font-size: 14px; color: var(--text3); font-weight: 600; }
+.kiosk__id-pill {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 100px; padding: 4px 16px;
+  font-family: var(--font-mono); font-size: 14px; color: var(--text2);
+}
+
+/* Info grid */
+.kiosk__info-grid {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  justify-content: center; width: 100%;
+}
+.kiosk__info-item {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 16px;
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 110px;
+}
+.kiosk__info-label {
+  font-size: 10px; color: var(--text3); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.kiosk__info-val {
+  font-size: 14px; font-weight: 700; color: var(--text1);
+}
+.kiosk__info-val--green { color: var(--accent); }
+.kiosk__info-val--red   { color: var(--danger); }
+
+.kiosk__confirm-q {
+  font-size: 16px; color: var(--text2); font-weight: 600;
+  margin: 4px 0 0;
+}
+.kiosk__confirm-btns {
+  display: flex; gap: 10px; width: 100%;
+}
+.kiosk__confirm-btns .kiosk__btn--secondary { max-width: 140px; }
+
+.kiosk__warn {
+  background: rgba(255,184,48,.1); border: 1px solid rgba(255,184,48,.3);
+  color: var(--warn); border-radius: 10px;
+  padding: 10px 16px; font-size: 13px; font-weight: 600;
+  width: 100%; text-align: center;
+}
+
+/* Success */
+.kiosk__success-icon {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(168,255,87,.15); border: 2px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px; color: var(--accent);
+  box-shadow: 0 0 40px var(--accent-glow);
+}
+.kiosk__success-title {
+  font-family: var(--font-display); font-size: 32px;
+  font-weight: 800; color: var(--accent);
+}
+.kiosk__success-name  { font-size: 20px; font-weight: 700; color: var(--text1); }
+.kiosk__success-time  { font-family: var(--font-mono); font-size: 28px; color: var(--teal); font-weight: 700; }
+.kiosk__success-date  { font-size: 13px; color: var(--text3); }
+.kiosk__success-action { font-size: 14px; color: var(--text2); }
+
+/* Error */
+.kiosk__error-icon {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: rgba(255,91,91,.12); border: 2px solid var(--danger);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; color: var(--danger);
+}
+.kiosk__error-title {
+  font-family: var(--font-display); font-size: 26px;
+  font-weight: 800; color: var(--danger);
+}
+.kiosk__error-msg  { font-size: 14px; color: var(--text2); }
+
+.kiosk__auto-reset { font-size: 12px; color: var(--text3); margin-top: 8px; }
+
+/* Footer */
+.kiosk__footer {
+  position: relative; z-index: 2;
+  font-size: 12px; color: var(--text3);
+  text-align: center; padding-top: 16px;
+}
+
+@media (max-width: 520px) {
+  .kiosk__card { padding: 24px 18px; }
+  .kiosk__input { font-size: 22px; }
+  .kiosk__name { font-size: 22px; }
+  .kiosk__clock { display: none; }
+}

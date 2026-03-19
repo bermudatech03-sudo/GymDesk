@@ -477,7 +477,7 @@ export default function Members() {
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th>Member</th><th>Phone</th><th>Plan</th>
+              <th>ID</th><th>Member</th><th>Phone</th><th>Plan</th>
               <th>Renewal</th><th>Days Left</th>
               <th>Paid</th><th>Balance</th>
               <th>Status</th><th>Actions</th>
@@ -489,6 +489,14 @@ export default function Members() {
                 <tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No members found</td></tr>
               ) : members.map(m => (
                 <tr key={m.id}>
+                  <td>
+                    <span style={{fontFamily:"var(--font-mono)",fontSize:12,
+                      color:"var(--accent)",fontWeight:700,
+                      background:"var(--accent-dim)",padding:"2px 8px",
+                      borderRadius:6}}>
+                      {m.member_id_display||`M${String(m.id).padStart(4,"0")}`}
+                    </span>
+                  </td>
                   <td>
                     <div style={{fontWeight:600}}>{m.name}</div>
                     <div style={{fontSize:11,color:"var(--text3)"}}>{m.email}</div>

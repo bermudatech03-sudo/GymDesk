@@ -1,18 +1,17 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Member, MembershipPlan, MemberPayment
+from .models import Member, MembershipPlan, MemberPayment, MemberAttendance
 
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
-        model = MembershipPlan
+        model  = MembershipPlan
         fields = "__all__"
 
 class MemberPaymentSerializer(serializers.ModelSerializer):
-    plan_name = serializers.CharField(source="plan.name", read_only=True)
+    plan_name   = serializers.CharField(source="plan.name",   read_only=True)
     member_name = serializers.CharField(source="member.name", read_only=True)
-
     class Meta:
-        model = MemberPayment
+        model  = MemberPayment
         fields = "__all__"
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -21,19 +20,25 @@ class MemberSerializer(serializers.ModelSerializer):
     days_until_expiry = serializers.SerializerMethodField()
     total_paid        = serializers.SerializerMethodField()
     balance_due       = serializers.SerializerMethodField()
+    member_id_display = serializers.SerializerMethodField()
 
     class Meta:
-        model = Member
+        model  = Member
         fields = "__all__"
 
-    def get_days_until_expiry(self, obj):
-        return obj.days_until_expiry()
+    def get_days_until_expiry(self, obj):  return obj.days_until_expiry()
+    def get_total_paid(self, obj):         return float(obj.total_paid())
+    def get_balance_due(self, obj):        return float(obj.balance_due())
+    def get_member_id_display(self, obj):  return obj.display_id()
 
-    def get_total_paid(self, obj):
-        return float(obj.total_paid())
-
-    def get_balance_due(self, obj):
-        return float(obj.balance_due())
+class MemberAttendanceSerializer(serializers.ModelSerializer):
+    member_name = serializers.CharField(source="member.name", read_only=True)
+    member_display_id = serializers.SerializerMethodField()
+    class Meta:
+        model  = MemberAttendance
+        fields = "__all__"
+    def get_member_display_id(self, obj):
+        return obj.member.member_id()
 
 class EnrollSerializer(serializers.Serializer):
     name         = serializers.CharField()

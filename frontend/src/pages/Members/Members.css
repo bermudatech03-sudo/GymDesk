@@ -1,0 +1,17 @@
+
+.members-filters {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.members-filters .search-bar { flex: 1; min-width: 200px; }
+.filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-pill {
+  padding: 6px 14px; border-radius: 100px; font-size: 12px; font-weight: 600;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text3); cursor: pointer; transition: all 0.2s;
+}
+.filter-pill:hover { border-color: var(--border2); color: var(--text2); }
+.filter-pill--active { background: var(--accent-dim); border-color: rgba(168,255,87,.3); color: var(--accent); }
+.members-pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}

@@ -1,22 +1,21 @@
-
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 
 class MembershipPlan(models.Model):
-    name         = models.CharField(max_length=100)
-    duration_days= models.PositiveIntegerField(default=30)
-    price        = models.DecimalField(max_digits=10, decimal_places=2)
-    description  = models.TextField(blank=True)
-    is_active    = models.BooleanField(default=True)
-    created_at   = models.DateTimeField(auto_now_add=True)
+    name          = models.CharField(max_length=100)
+    duration_days = models.PositiveIntegerField(default=30)
+    price         = models.DecimalField(max_digits=10, decimal_places=2)
+    description   = models.TextField(blank=True)
+    is_active     = models.BooleanField(default=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} ({self.duration_days}d — ₹{self.price})"
 
 class Member(models.Model):
-    GENDER   = [("M","Male"),("F","Female"),("O","Other")]
-    STATUS   = [("active","Active"),("expired","Expired"),("cancelled","Cancelled"),("paused","Paused")]
+    GENDER = [("M","Male"),("F","Female"),("O","Other")]
+    STATUS = [("active","Active"),("expired","Expired"),("cancelled","Cancelled"),("paused","Paused")]
 
     name         = models.CharField(max_length=150)
     phone        = models.CharField(max_length=15, unique=True)
@@ -24,8 +23,8 @@ class Member(models.Model):
     dob          = models.DateField(null=True, blank=True)
     gender       = models.CharField(max_length=1, choices=GENDER, blank=True)
     address      = models.TextField(blank=True)
-    photo        = models.ImageField(upload_to="members/", null=True, blank=True)
-    plan         = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True)
+    photo_url    = models.URLField(blank=True)
+    plan         = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
     join_date    = models.DateField(default=timezone.localdate)
     renewal_date = models.DateField(null=True, blank=True)
     status       = models.CharField(max_length=12, choices=STATUS, default="active")
@@ -41,27 +40,62 @@ class Member(models.Model):
 
     def days_until_expiry(self):
         if self.renewal_date:
-            return (self.renewal_date - timezone.now().date()).days
+            return (self.renewal_date - timezone.localdate()).days
         return None
+
+    def total_paid(self):
+        from django.db.models import Sum
+        result = self.payments.aggregate(t=Sum("amount_paid"))["t"]
+        return result or 0
+
+    def total_due(self):
+        from django.db.models import Sum
+        result = self.payments.aggregate(t=Sum("plan_price"))["t"]
+        return result or 0
+
+    def balance_due(self):
+        return self.total_due() - self.total_paid()
 
     def renew(self):
         if self.plan:
-            base = max(self.renewal_date, timezone.now().date()) if self.renewal_date else timezone.now().date()
+            base = max(self.renewal_date, timezone.localdate()) if self.renewal_date else timezone.localdate()
             self.renewal_date = base + timedelta(days=self.plan.duration_days)
             self.status = "active"
             self.save()
 
 class MemberPayment(models.Model):
-    STATUS = [("paid","Paid"),("pending","Pending"),("partial","Partial")]
-    member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="payments")
-    plan       = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True)
-    amount     = models.DecimalField(max_digits=10, decimal_places=2)
-    paid_date  = models.DateField(default=timezone.localdate)
-    valid_from = models.DateField()
-    valid_to   = models.DateField()
-    status     = models.CharField(max_length=10, choices=STATUS, default="paid")
-    notes      = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    STATUS = [("paid","Paid"),("partial","Partial"),("pending","Pending")]
+
+    member      = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="payments")
+    plan        = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    plan_price  = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # full plan price
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # actual collected
+    balance     = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # yet to collect
+    paid_date   = models.DateField(default=timezone.localdate)
+    valid_from  = models.DateField()
+    valid_to    = models.DateField()
+    status      = models.CharField(max_length=10, choices=STATUS, default="paid")
+    notes       = models.TextField(blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-paid_date"]
+
+    def save(self, *args, **kwargs):
+        self.balance = self.plan_price - self.amount_paid
+        if self.balance <= 0:
+            self.status = "paid"
+        elif self.amount_paid > 0:
+            self.status = "partial"
+        else:
+            self.status = "pending"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'''member: {self.member} 
+                   Status : {self.status}
+                   plan   : {self.plan}
+                   amount : {self.amount}
+
+
+'''

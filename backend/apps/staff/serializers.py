@@ -1,4 +1,3 @@
-
 from rest_framework import serializers
 from .models import StaffMember, StaffAttendance, StaffPayment
 
@@ -15,6 +14,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
 class PaymentSerializer(serializers.ModelSerializer):
     staff_name = serializers.CharField(source="staff.name", read_only=True)
+    staff_role = serializers.CharField(source="staff.role", read_only=True)
     class Meta:
         model = StaffPayment
         fields = "__all__"

@@ -20,7 +20,7 @@ class MemberSerializer(serializers.ModelSerializer):
     days_until_expiry = serializers.SerializerMethodField()
     total_paid        = serializers.SerializerMethodField()
     balance_due       = serializers.SerializerMethodField()
-    member_id_display = serializers.SerializerMethodField()
+    display_id        = serializers.SerializerMethodField()
 
     class Meta:
         model  = Member
@@ -29,16 +29,16 @@ class MemberSerializer(serializers.ModelSerializer):
     def get_days_until_expiry(self, obj):  return obj.days_until_expiry()
     def get_total_paid(self, obj):         return float(obj.total_paid())
     def get_balance_due(self, obj):        return float(obj.balance_due())
-    def get_member_id_display(self, obj):  return obj.display_id()
+    def get_display_id(self, obj):  return obj.display_id()
 
 class MemberAttendanceSerializer(serializers.ModelSerializer):
     member_name = serializers.CharField(source="member.name", read_only=True)
-    member_display_id = serializers.SerializerMethodField()
+    display_id = serializers.SerializerMethodField()
     class Meta:
         model  = MemberAttendance
         fields = "__all__"
-    def get_member_display_id(self, obj):
-        return obj.member.member_id()
+    def get_display_id(self, obj):
+        return obj.member.display_id()
 
 class EnrollSerializer(serializers.Serializer):
     name         = serializers.CharField()

@@ -2,13 +2,13 @@ from rest_framework import serializers
 from .models import StaffMember, StaffAttendance, StaffPayment
 
 class StaffSerializer(serializers.ModelSerializer):
-    staff_id_display = serializers.SerializerMethodField()
+    display_id = serializers.SerializerMethodField()
 
     class Meta:
         model  = StaffMember
         fields = "__all__"
 
-    def get_staff_id_display(self, obj):
+    def get_display_id(self, obj):
         return obj.display_id()
 
 class AttendanceSerializer(serializers.ModelSerializer):

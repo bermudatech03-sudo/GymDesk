@@ -231,7 +231,7 @@ class KioskLookupView(APIView):
                     "plan":    member.plan.name if member.plan else "No Plan",
                     "status":  member.status,
                     "renewal": str(member.renewal_date) if member.renewal_date else None,
-                    "photo":   member.photo_url or "",
+                    "photo": staff.photo.url if staff.photo else "",
                 })
             except (ValueError, Member.DoesNotExist):
                 return Response({"detail": f"No member found with ID {raw}."}, status=404)
@@ -250,7 +250,7 @@ class KioskLookupView(APIView):
                     "role":       staff.role.capitalize(),
                     "shift":      staff.shift,
                     "status":     staff.status,
-                    "photo":      staff.photo_url or "",
+                    "photo": staff.photo.url if staff.photo else "",
                 })
             except (ValueError, StaffMember.DoesNotExist):
                 return Response({"detail": f"No staff found with ID {raw}."}, status=404)

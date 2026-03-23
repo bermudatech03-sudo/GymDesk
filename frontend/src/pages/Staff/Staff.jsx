@@ -11,6 +11,7 @@ const ROLES = ["trainer","receptionist","cleaner","manager","other"];
 
 function StaffModal({ staff, onClose, onSave }) {
   const [form, setForm] = useState(staff || {
+  
     name:"", phone:"", email:"", role:"trainer",
     shift:"morning", salary:"", status:"active", notes:""
   });
@@ -38,6 +39,7 @@ function StaffModal({ staff, onClose, onSave }) {
         <div className="modal-title">{staff?.id ? "Edit Staff" : "Add Staff Member"}</div>
         <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:14}}>
           <div className="grid-2">
+            
             <div className="form-group">
               <label className="form-label">Full Name *</label>
               <input className="form-input" value={form.name}
@@ -157,6 +159,11 @@ function AttendanceModal({ staffList, onClose, onSave }) {
                       background:"rgba(45,255,195,.1)",padding:"2px 8px",
                       borderRadius:6}}>
                       {s.staff_id_display||`S${String(s.id).padStart(4,"0")}`}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="staff-id">
+                      {s.staff_id_display || `S${String(s.id).padStart(4,"0")}`}
                     </span>
                   </td>
                   <td><b>{s.name}</b></td>
@@ -345,6 +352,7 @@ function PaymentsTab({ staffList }) {
             <table>
               <thead>
                 <tr>
+                  <th>ID</th>
                   <th>Staff Name</th>
                   <th>Role</th>
                   <th>Shift</th>
@@ -478,14 +486,19 @@ export default function Staff() {
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>Name</th><th>Role</th><th>Shift</th>
+                <th>ID</th><th>Name</th><th>Role</th><th>Shift</th>
                 <th>Phone</th><th>Salary</th><th>Status</th><th>Actions</th>
               </tr></thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>Loading…</td></tr>
+                  <tr><td colSpan={8} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>Loading…</td></tr>
                 ) : staffList.map(s=>(
                   <tr key={s.id}>
+                    <td>
+                      <span className="staff-id">
+                        {s.staff_id_display || `S${String(s.id).padStart(4,"0")}`}
+                      </span>
+                    </td>
                     <td><b>{s.name}</b></td>
                     <td><span className="badge badge-blue">{s.role}</span></td>
                     <td style={{fontSize:12,color:"var(--text2)"}}>{SHIFTS[s.shift]||s.shift}</td>
@@ -525,7 +538,7 @@ export default function Staff() {
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>Name</th><th>Status</th><th>Check In</th><th>Check Out</th>
+                <th>ID</th><th>Name</th><th>Status</th><th>Check In</th><th>Check Out</th>
               </tr></thead>
               <tbody>
                 {loading ? (

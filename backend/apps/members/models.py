@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 
 class MembershipPlan(models.Model):
     name          = models.CharField(max_length=100)
@@ -50,7 +51,7 @@ class Member(models.Model):
 
     def total_due(self):
         from django.db.models import Sum
-        result = self.payments.aggregate(t=Sum("plan_price"))["t"]
+        result = self.payments.aggregate(t=Sum("total_with_gst"))["t"]
         return result or 0
 
     def balance_due(self):
@@ -67,41 +68,72 @@ class Member(models.Model):
         return f"M{self.id:04d}"
 
 class MemberPayment(models.Model):
+    """
+    One record per enrollment / renewal cycle.
+    GST is calculated once on the plan price.
+    Members can pay in installments — amount_paid grows,
+    balance shrinks. GST is NOT re-applied on installments.
+    """
     STATUS = [("paid","Paid"),("partial","Partial"),("pending","Pending")]
-
-    member      = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="payments")
-    plan        = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
-    plan_price  = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # full plan price
-    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # actual collected
-    balance     = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # yet to collect
-    paid_date   = models.DateField(default=timezone.localdate)
-    valid_from  = models.DateField()
-    valid_to    = models.DateField()
-    status      = models.CharField(max_length=10, choices=STATUS, default="paid")
-    notes       = models.TextField(blank=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
-
+ 
+    member         = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="payments")
+    plan           = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    invoice_number = models.CharField(max_length=60, blank=True)
+ 
+    # Plan base price (before GST)
+    plan_price     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # GST fields — computed once at enrollment/renewal
+    gst_rate       = models.DecimalField(max_digits=5,  decimal_places=2, default=0)
+    gst_amount     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Total the member owes = plan_price + gst_amount
+    total_with_gst = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+ 
+    # Running installment tracking
+    amount_paid    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    balance        = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+ 
+    paid_date      = models.DateField(default=timezone.localdate)
+    valid_from     = models.DateField()
+    valid_to       = models.DateField()
+    status         = models.CharField(max_length=10, choices=STATUS, default="pending")
+    notes          = models.TextField(blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+ 
     class Meta:
         ordering = ["-paid_date"]
-
+ 
     def save(self, *args, **kwargs):
-        self.balance = self.plan_price - self.amount_paid
-        if self.balance <= 0:
+        # Recalculate balance and status on every save
+        self.balance = self.total_with_gst - self.amount_paid
+        if self.balance <= Decimal("0"):
             self.status = "paid"
-        elif self.amount_paid > 0:
+            self.balance = Decimal("0")
+        elif self.amount_paid > Decimal("0"):
             self.status = "partial"
         else:
             self.status = "pending"
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f'''member: {self.member} 
-                   Status : {self.status}
-                   plan   : {self.plan}
-                   amount : {self.amount}
-
-
-'''
+    def add_installment(self, amount, paid_date=None, notes="", installment_type="balance"):
+        """
+        Convenience method: record a new installment, update amount_paid, save.
+        GST is intentionally NOT touched here.
+        """
+        amount = Decimal(str(amount))
+        inst = InstallmentPayment(
+            payment          = self,
+            member           = self.member,
+            installment_type = installment_type,
+            amount           = amount,
+            paid_date        = paid_date or timezone.localdate(),
+            notes            = notes,
+        )
+        self.amount_paid += amount
+        # Snapshot the balance AFTER this installment is applied
+        inst.balance_after = max(self.total_with_gst - self.amount_paid, Decimal("0"))
+        inst.save()
+        self.save()   # triggers balance / status recalc
+        return inst
     
 class MemberAttendance(models.Model):
     member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="attendance")
@@ -115,3 +147,32 @@ class MemberAttendance(models.Model):
  
     def __str__(self):
         return f"{self.member.name} — {self.date}"  
+
+class InstallmentPayment(models.Model):
+    """
+    One record per individual payment made against a MemberPayment cycle.
+    Enrollment first payment, subsequent balance payments — all stored here.
+    """
+    INSTALLMENT_TYPE = [
+        ("enrollment", "Enrollment"),
+        ("renewal",    "Renewal"),
+        ("balance",    "Balance Payment"),
+    ]
+ 
+    payment        = models.ForeignKey(MemberPayment, on_delete=models.CASCADE,
+                                       related_name="installment_payments")
+    member         = models.ForeignKey(Member, on_delete=models.CASCADE,
+                                       related_name="installments")
+    installment_type = models.CharField(max_length=20, choices=INSTALLMENT_TYPE, default="balance")
+    amount         = models.DecimalField(max_digits=10, decimal_places=2)
+    # Snapshot of balance AFTER this installment was applied
+    balance_after  = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    paid_date      = models.DateField(default=timezone.localdate)
+    notes          = models.TextField(blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["paid_date", "created_at"]
+ 
+    def __str__(self):
+        return f"{self.member.name} — ₹{self.amount} on {self.paid_date}"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
+import MonthlyReport from "../../components/Monthlyreport";
 import toast from "react-hot-toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -19,6 +20,7 @@ const CAT_LABELS = {
 
 function EntryModal({ type, onClose, onSave }) {
   const isIncome = type === "income";
+  
   const [form, setForm] = useState({
     source:"", description:"",
     category: isIncome ? "membership" : "salary",
@@ -148,6 +150,7 @@ export default function Finances() {
   const [tab,     setTab]     = useState("overview");
   const [modal,   setModal]   = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showReport, setShowReport] = useState(false);
 
   // Income filters
   const [incSearch,  setIncSearch]  = useState("");
@@ -246,6 +249,9 @@ export default function Finances() {
               border:"1px solid rgba(255,91,91,.3)"}}
             onClick={()=>setModal("expense")}>
             + Expense
+          </button>
+          <button className="btn btn-secondary" onClick={()=>setShowReport(true)}>
+            📋 Monthly Report
           </button>
         </div>
       </div>
@@ -470,6 +476,7 @@ export default function Finances() {
       {modal==="expense" && (
         <EntryModal type="expense" onClose={()=>setModal(null)} onSave={()=>{setModal(null);load();}}/>
       )}
+      {showReport && <MonthlyReport defaultMonth={month} defaultYear={year} onClose={()=>setShowReport(false)}/>}
     </div>
   );
 }

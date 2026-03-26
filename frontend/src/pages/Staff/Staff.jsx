@@ -3,28 +3,697 @@ import api from "../../api/axios";
 import toast from "react-hot-toast";
 import "./Staff.css";
 
-const SHIFTS = {
-  morning:"Morning 6-2PM", evening:"Evening 2-10PM",
-  full:"Full Day", off:"Day Off"
-};
-const ROLES = ["trainer","receptionist","cleaner","manager","other"];
+// ─── Constants ──────────────────────────────────────────────────────────────
 
-function StaffModal({ staff, onClose, onSave }) {
-  const [form, setForm] = useState(staff || {
-    name:"", phone:"", email:"", role:"trainer",
-    shift:"morning", salary:"", status:"active", notes:""
-  });
+const SHIFTS = {
+  morning: "Morning 6-2PM", evening: "Evening 2-10PM",
+  full: "Full Day", off: "Day Off",
+};
+const ROLES   = ["trainer", "receptionist", "cleaner", "manager", "other"];
+const MONTHS  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+const PRESET_OPTIONS = [
+  { value: "mon_sun", label: "Mon – Sun (All week)" },
+  { value: "mon_fri", label: "Mon – Fri (Weekdays)" },
+  { value: "mon_sat", label: "Mon – Sat" },
+  { value: "sat_sun", label: "Sat – Sun (Weekends)" },
+  { value: "custom",  label: "Custom days" },
+];
+
+const STATUS_META = {
+  present:    { label: "Present",     color: "#22c55e", bg: "rgba(34,197,94,.15)"  },
+  absent:     { label: "Absent",      color: "#ef4444", bg: "rgba(239,68,68,.15)"  },
+  late:       { label: "Late",        color: "#f97316", bg: "rgba(249,115,22,.15)" },
+  overtime:   { label: "Overtime",    color: "#3b82f6", bg: "rgba(59,130,246,.15)" },
+  half:       { label: "Half Day",    color: "#a855f7", bg: "rgba(168,85,247,.15)" },
+  leave:      { label: "Leave",       color: "#6b7280", bg: "rgba(107,114,128,.15)"},
+  auto_absent:  { label: "Auto Absent",  color: "#dc2626", bg: "rgba(220,38,38,.10)"  },
+  late_overtime: { label: "Late + OT",    color: "#a855f7", bg: "rgba(168,85,247,.15)"  },
+};
+
+const fmt_mins = (m) => {
+  if (!m) return "—";
+  const h = Math.floor(m / 60), mn = m % 60;
+  return h > 0 ? `${h}h ${mn}m` : `${mn}m`;
+};
+
+// ─── Shift Management Modal ──────────────────────────────────────────────────
+
+function ShiftModal({ shift, onClose, onSave }) {
+  const blank = {
+    name: "", working_days_preset: "mon_sun", working_days: "0,1,2,3,4,5,6",
+    start_time: "06:00", end_time: "14:00",
+    late_grace_minutes: 15, overtime_threshold_minutes: 30, notes: "",
+  };
+  const [form, setForm]   = useState(shift || blank);
   const [saving, setSaving] = useState(false);
-  const set = (k,v) => setForm(p=>({...p,[k]:v}));
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Sync working_days when preset changes
+  const presetMap = {
+    mon_sun: "0,1,2,3,4,5,6", mon_fri: "0,1,2,3,4",
+    mon_sat: "0,1,2,3,4,5",   sat_sun: "5,6",
+  };
+  const handlePreset = (val) => {
+    set("working_days_preset", val);
+    if (val !== "custom") set("working_days", presetMap[val]);
+  };
+
+  // Custom day toggle
+  const toggleDay = (idx) => {
+    const days = form.working_days
+      ? form.working_days.split(",").map(Number).filter(n => !isNaN(n))
+      : [];
+    const next = days.includes(idx) ? days.filter(d => d !== idx) : [...days, idx].sort();
+    set("working_days", next.join(","));
+  };
+
+  const selectedDays = form.working_days
+    ? form.working_days.split(",").map(Number).filter(n => !isNaN(n))
+    : [];
 
   const submit = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
+      if (shift?.id) {
+        await api.patch(`/staff/shifts/${shift.id}/`, form);
+        toast.success("Shift updated!");
+      } else {
+        await api.post("/staff/shifts/", form);
+        toast.success("Shift created!");
+      }
+      onSave();
+    } catch (err) {
+      toast.error(err.response?.data?.name?.[0] || "Something went wrong");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">{shift?.id ? "Edit Shift" : "Create Shift Template"}</div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label">Shift Name *</label>
+            <input className="form-input" value={form.name} required
+              placeholder="e.g. Morning Weekday"
+              onChange={e => set("name", e.target.value)} />
+          </div>
+
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Start Time *</label>
+              <input className="form-input" type="time" value={form.start_time} required
+                onChange={e => set("start_time", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">End Time *</label>
+              <input className="form-input" type="time" value={form.end_time} required
+                onChange={e => set("end_time", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Working Days</label>
+            <select className="form-input" value={form.working_days_preset}
+              onChange={e => handlePreset(e.target.value)}>
+              {PRESET_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {form.working_days_preset === "custom" && (
+            <div className="form-group">
+              <label className="form-label">Select Days</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                {DAYS_SHORT.map((d, i) => (
+                  <button key={i} type="button"
+                    onClick={() => toggleDay(i)}
+                    style={{
+                      padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                      border: "1px solid",
+                      borderColor: selectedDays.includes(i) ? "var(--accent)" : "var(--border)",
+                      background:  selectedDays.includes(i) ? "rgba(168,255,87,.15)" : "transparent",
+                      color:       selectedDays.includes(i) ? "var(--accent)" : "var(--text3)",
+                      cursor: "pointer",
+                    }}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Late Grace (mins)</label>
+              <input className="form-input" type="number" min={0} value={form.late_grace_minutes}
+                onChange={e => set("late_grace_minutes", +e.target.value)} />
+              <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>
+                Check-in within this window = on time
+              </span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">OT Threshold (mins)</label>
+              <input className="form-input" type="number" min={0} value={form.overtime_threshold_minutes}
+                onChange={e => set("overtime_threshold_minutes", +e.target.value)} />
+              <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>
+                Check-out beyond this = overtime
+              </span>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <textarea className="form-input" rows={2} value={form.notes}
+              onChange={e => set("notes", e.target.value)} />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Save Shift"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shifts Tab ──────────────────────────────────────────────────────────────
+
+function ShiftsTab() {
+  const [shifts,  setShifts]  = useState([]);
+  const [staff,   setStaff]   = useState([]);
+  const [modal,   setModal]   = useState(null);   // null | "add" | shift object
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [s, st] = await Promise.all([
+        api.get("/staff/shifts/"),
+        api.get("/staff/members/"),
+      ]);
+      setShifts(s.data.results || s.data);
+      setStaff(st.data.results  || st.data);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const deleteShift = async (id) => {
+    if (!confirm("Delete this shift template? Staff assigned to it will be unlinked.")) return;
+    try {
+      await api.delete(`/staff/shifts/${id}/`);
+      toast.success("Shift deleted.");
+      load();
+    } catch { toast.error("Failed to delete."); }
+  };
+
+  // Assign shift template to a staff member
+  const assignShift = async (staffId, shiftId) => {
+    try {
+      await api.patch(`/staff/members/${staffId}/`, { shift_template: shiftId || null });
+      toast.success("Shift assigned.");
+      load();
+    } catch { toast.error("Failed to assign."); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <button className="btn btn-primary" onClick={() => setModal("add")}>
+          + New Shift Template
+        </button>
+      </div>
+
+      {/* Shift templates */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12, marginBottom: 24 }}>
+        {loading ? (
+          <div style={{ color: "var(--text3)", padding: 24 }}>Loading…</div>
+        ) : shifts.length === 0 ? (
+          <div style={{ color: "var(--text3)", padding: 24 }}>
+            No shift templates yet. Create one to assign to trainers.
+          </div>
+        ) : shifts.map(sh => {
+          const assignedCount = staff.filter(s => s.shift_template === sh.id).length;
+          return (
+            <div key={sh.id} className="card" style={{ padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text1)" }}>{sh.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--accent)", fontFamily: "var(--font-mono)", marginTop: 3 }}>
+                    {sh.start_time?.slice(0,5)} – {sh.end_time?.slice(0,5)}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm btn-secondary" onClick={() => setModal(sh)}>Edit</button>
+                  <button className="btn btn-sm" onClick={() => deleteShift(sh.id)}
+                    style={{ background: "rgba(255,91,91,.1)", color: "var(--danger)", border: "1px solid rgba(255,91,91,.2)" }}>
+                    Del
+                  </button>
+                </div>
+              </div>
+              {/* Working days chips */}
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }}>
+                {DAYS_SHORT.map((d, i) => {
+                  const days = sh.working_days ? sh.working_days.split(",").map(Number) : [];
+                  const active = days.includes(i);
+                  return (
+                    <span key={i} style={{
+                      padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                      background: active ? "rgba(168,255,87,.15)" : "var(--surface2)",
+                      color:      active ? "var(--accent)"         : "var(--text3)",
+                      border:     `1px solid ${active ? "rgba(168,255,87,.3)" : "var(--border)"}`,
+                    }}>{d}</span>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>
+                Grace: {sh.late_grace_minutes}m late &nbsp;·&nbsp; OT after {sh.overtime_threshold_minutes}m
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 4 }}>
+                {assignedCount} staff assigned
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Staff assignment table */}
+      <div className="card">
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", fontWeight: 700, fontSize: 14 }}>
+          Assign Shifts to Staff
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Staff</th><th>Role</th><th>Current Shift Template</th><th>Assign</th>
+            </tr></thead>
+            <tbody>
+              {staff.map(s => (
+                <tr key={s.id}>
+                  <td><b>{s.name}</b></td>
+                  <td><span className="badge badge-blue">{s.role}</span></td>
+                  <td style={{ fontSize: 12, color: "var(--text2)" }}>
+                    {shifts.find(sh => sh.id === s.shift_template)?.name || (
+                      <span style={{ color: "var(--text3)" }}>None assigned</span>
+                    )}
+                  </td>
+                  <td>
+                    <select className="form-input" style={{ minWidth: 180, fontSize: 12 }}
+                      value={s.shift_template || ""}
+                      onChange={e => assignShift(s.id, e.target.value || null)}>
+                      <option value="">— No shift —</option>
+                      {shifts.map(sh => (
+                        <option key={sh.id} value={sh.id}>{sh.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {(modal === "add" || (modal && modal.id)) && (
+        <ShiftModal
+          shift={modal === "add" ? null : modal}
+          onClose={() => setModal(null)}
+          onSave={() => {
+            setModal(null);
+            load();   // re-fetches both shifts AND staff so assign dropdown updates instantly
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Mark Day Modal ──────────────────────────────────────────────────────────
+
+function MarkDayModal({ staffId, date, existing, onClose, onSave }) {
+  const [form, setForm] = useState({
+    status:    existing?.status    || "present",
+    check_in:  existing?.check_in  || "",
+    check_out: existing?.check_out || "",
+    notes:     existing?.notes     || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const submit = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await api.post(`/staff/members/${staffId}/mark-day/`, { date, ...form });
+      toast.success("Attendance updated.");
+      onSave();
+    } catch { toast.error("Failed to save."); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">Mark Attendance — {date}</div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label">Status</label>
+            <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
+              {Object.entries(STATUS_META)
+                .filter(([k]) => k !== "late_overtime")  // auto-derived, not manually set
+                .map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+            </select>
+          </div>
+          {form.status !== "absent" && form.status !== "auto_absent" && (
+            <>
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Check In *</label>
+                  <input className="form-input" type="time" value={form.check_in}
+                    onChange={e => set("check_in", e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Check Out <span style={{ color: "var(--text3)", fontSize: 11 }}>(optional)</span></label>
+                  <input className="form-input" type="time" value={form.check_out}
+                    onChange={e => set("check_out", e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <input className="form-input" value={form.notes} onChange={e => set("notes", e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Staff Calendar View ─────────────────────────────────────────────────────
+
+function StaffCalendar({ staffId, staffName, onBack }) {
+  const now = new Date();
+  const [month,   setMonth]   = useState(now.getMonth() + 1);
+  const [year,    setYear]    = useState(now.getFullYear());
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [markDay, setMarkDay] = useState(null);  // { date, existing }
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/staff/members/${staffId}/calendar/?year=${year}&month=${month}`);
+      setData(res.data);
+    } finally { setLoading(false); }
+  }, [staffId, year, month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "var(--text3)" }}>Loading calendar…</div>;
+  if (!data)   return null;
+
+  const { counts, shift, days } = data;
+
+  // Pad calendar grid so first day aligns correctly (Mon=0)
+  const firstWeekday = new Date(year, month - 1, 1).getDay();   // 0=Sun
+  const padDays      = (firstWeekday + 6) % 7;                  // convert to Mon-based
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <button className="btn btn-secondary btn-sm" onClick={onBack}>← Back</button>
+        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text1)" }}>
+          {staffName} — Attendance Calendar
+        </div>
+        {shift?.name && (
+          <span style={{
+            fontSize: 12, fontWeight: 600, padding: "3px 12px", borderRadius: 20,
+            background: "rgba(168,255,87,.12)", color: "var(--accent)",
+            border: "1px solid rgba(168,255,87,.25)",
+          }}>
+            {shift.name} · {shift.start_time?.slice(0,5)}–{shift.end_time?.slice(0,5)}
+          </span>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <select className="form-input" style={{ minWidth: 90 }} value={month}
+            onChange={e => setMonth(+e.target.value)}>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select className="form-input" style={{ minWidth: 80 }} value={year}
+            onChange={e => setYear(+e.target.value)}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Summary counts */}
+      {(() => {
+        // Total worked minutes across all days this month
+        const totalWorkedMins = days.reduce((sum, d) => sum + (d.worked_minutes || 0), 0);
+        const totalLateCount  = (counts.late || 0) + (counts.late_overtime || 0);
+        const totalOTCount    = (counts.overtime || 0) + (counts.late_overtime || 0);
+        const totalLatemins   = days.reduce((sum, d) => sum + (d.late_minutes || 0), 0);
+        const totalOTmins     = days.reduce((sum, d) => sum + (d.overtime_minutes || 0), 0);
+        const wh = Math.floor(totalWorkedMins / 60);
+        const wm = totalWorkedMins % 60;
+
+        return (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            {/* Static count boxes */}
+            {[
+              { key: "working_days",  label: "Working Days",  color: "var(--text2)", val: counts.working_days ?? 0 },
+              { key: "present",       label: "Present",       color: "#22c55e",      val: counts.present ?? 0 },
+              { key: "absent",        label: "Absent",        color: "#ef4444",      val: (counts.absent ?? 0) + (counts.auto_absent ?? 0) },
+              { key: "auto_absent",   label: "Auto Absent",   color: "#dc2626",      val: counts.auto_absent ?? 0 },
+              { key: "late",          label: "Late Days",     color: "#f97316",      val: totalLateCount },
+              { key: "overtime",      label: "OT Days",       color: "#3b82f6",      val: totalOTCount },
+              { key: "half",          label: "Half Day",      color: "#a855f7",      val: counts.half ?? 0 },
+              { key: "leave",         label: "Leave",         color: "#6b7280",      val: counts.leave ?? 0 },
+            ].map(c => (
+              <div key={c.key} style={{
+                background: "var(--surface)", border: "1px solid var(--border)",
+                borderRadius: 8, padding: "8px 14px", textAlign: "center", minWidth: 70,
+              }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.val}</div>
+                <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px" }}>{c.label}</div>
+              </div>
+            ))}
+
+            {/* Total worked hours — wider box, prominent */}
+            <div style={{
+              background: "var(--surface)", border: "2px solid rgba(168,255,87,.3)",
+              borderRadius: 8, padding: "8px 18px", textAlign: "center", minWidth: 110,
+            }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+                {wh}h {wm}m
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px" }}>
+                Total Worked
+              </div>
+              {totalLatemins > 0 && (
+                <div style={{ fontSize: 9, color: "#f97316", marginTop: 2 }}>
+                  +{Math.floor(totalLatemins/60) > 0 ? `${Math.floor(totalLatemins/60)}h ` : ""}{totalLatemins%60}m total late
+                </div>
+              )}
+              {totalOTmins > 0 && (
+                <div style={{ fontSize: 9, color: "#3b82f6", marginTop: 1 }}>
+                  +{Math.floor(totalOTmins/60) > 0 ? `${Math.floor(totalOTmins/60)}h ` : ""}{totalOTmins%60}m total OT
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Calendar grid */}
+      <div className="card" style={{ padding: 16 }}>
+        {/* Day headers */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
+          {DAYS_SHORT.map(d => (
+            <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700,
+              color: d === "Sun" ? "var(--danger)" : "var(--text3)", padding: "4px 0" }}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Pad + day cells */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+          {Array.from({ length: padDays }).map((_, i) => <div key={`pad-${i}`} />)}
+
+          {days.map(day => {
+            const sm     = day.status ? STATUS_META[day.status] : null;
+            const isToday = day.date === new Date().toISOString().split("T")[0];
+
+            return (
+              <div key={day.date}
+                onClick={() => !day.is_future && setMarkDay({ date: day.date, existing: day.attendance_id ? day : null })}
+                style={{
+                  borderRadius: 8, padding: "6px 4px", textAlign: "center",
+                  background:  day.is_future  ? "transparent"          :
+                               !day.is_working_day ? "var(--surface2)" :
+                               sm ? sm.bg : "var(--surface2)",
+                  border: isToday ? "2px solid var(--accent)" :
+                          day.is_working_day && !day.is_future ? "1px solid var(--border)" :
+                          "1px solid transparent",
+                  cursor: day.is_future ? "default" : "pointer",
+                  opacity: day.is_future ? 0.35 : 1,
+                  minHeight: 64,
+                  position: "relative",
+                  transition: "filter .15s",
+                }}
+                title={day.is_future ? "" : `Click to mark attendance for ${day.date}`}
+              >
+                {/* Day number */}
+                <div style={{ fontSize: 13, fontWeight: 700,
+                  color: isToday ? "var(--accent)" : "var(--text1)" }}>
+                  {day.day_num}
+                </div>
+
+                {/* Status label — for late_overtime show two stacked coloured lines */}
+                {sm && day.status !== "late_overtime" && (
+                  <div style={{ fontSize: 9, fontWeight: 700, color: sm.color,
+                    textTransform: "uppercase", letterSpacing: ".4px", marginTop: 2 }}>
+                    {sm.label}
+                  </div>
+                )}
+                {day.status === "late_overtime" && (
+                  <div style={{ marginTop: 2, lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "#f97316",
+                      textTransform: "uppercase", letterSpacing: ".4px" }}>Late</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "#3b82f6",
+                      textTransform: "uppercase", letterSpacing: ".4px" }}>+ OT</div>
+                  </div>
+                )}
+
+                {/* Non-working day marker */}
+                {!day.is_working_day && !day.is_future && (
+                  <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 2 }}>OFF</div>
+                )}
+
+                {/* Times */}
+                {day.check_in && (
+                  <div style={{ fontSize: 9, color: "var(--text2)", marginTop: 2, lineHeight: 1.3 }}>
+                    {day.check_in.slice(0,5)}
+                    {day.check_out ? ` – ${day.check_out.slice(0,5)}` : ""}
+                  </div>
+                )}
+
+                {/* Late / OT badge */}
+                {(day.late_minutes > 0 || day.overtime_minutes > 0) && (
+                  <div style={{ display: "flex", gap: 2, justifyContent: "center", marginTop: 3, flexWrap: "wrap" }}>
+                    {day.late_minutes > 0 && (
+                      <span style={{ fontSize: 8, background: "rgba(249,115,22,.2)",
+                        color: "#f97316", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>
+                        +{day.late_minutes}m late
+                      </span>
+                    )}
+                    {day.overtime_minutes > 0 && (
+                      <span style={{ fontSize: 8, background: "rgba(59,130,246,.2)",
+                        color: "#3b82f6", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>
+                        +{day.overtime_minutes}m OT
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Shift vs worked hours warning */}
+                {day.worked_minutes > 0 && day.shift_duration && (
+                  <div style={{ marginTop: 2 }}>
+                    {day.worked_minutes < day.shift_duration - 30 ? (
+                      <span style={{ fontSize: 8, color: "#ef4444", fontWeight: 700 }}>
+                        ↓ {fmt_mins(day.shift_duration - day.worked_minutes)} short
+                      </span>
+                    ) : day.worked_minutes > day.shift_duration + 30 ? (
+                      <span style={{ fontSize: 8, color: "#3b82f6", fontWeight: 700 }}>
+                        ↑ {fmt_mins(day.worked_minutes - day.shift_duration)} extra
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Legend */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14,
+          paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+          {Object.entries(STATUS_META).map(([k, v]) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: v.bg, border: `1px solid ${v.color}` }} />
+              <span style={{ fontSize: 10, color: "var(--text3)" }}>{v.label}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: "var(--surface2)" }} />
+            <span style={{ fontSize: 10, color: "var(--text3)" }}>Day Off</span>
+          </div>
+        </div>
+      </div>
+
+      {markDay && (
+        <MarkDayModal
+          staffId={staffId}
+          date={markDay.date}
+          existing={markDay.existing}
+          onClose={() => setMarkDay(null)}
+          onSave={() => { setMarkDay(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Existing sub-components (trimmed to essentials) ────────────────────────
+
+function StaffModal({ staff, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name:           staff?.name           || "",
+    phone:          staff?.phone          || "",
+    email:          staff?.email          || "",
+    role:           staff?.role           || "trainer",
+    salary:         staff?.salary         || "",
+    status:         staff?.status         || "active",
+    notes:          staff?.notes          || "",
+    shift_template: staff?.shift_template || "",
+  });
+  const [shifts,  setShifts]  = useState([]);
+  const [saving,  setSaving]  = useState(false);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Load shift templates from StaffShift table when modal opens
+  useEffect(() => {
+    api.get("/staff/shifts/").then(res => {
+      setShifts(res.data.results || res.data);
+    }).catch(() => {});
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      const payload = { ...form, shift_template: form.shift_template || null };
       if (staff?.id) {
-        await api.patch(`/staff/members/${staff.id}/`, form);
+        await api.patch(`/staff/members/${staff.id}/`, payload);
         toast.success("Staff updated!");
       } else {
-        await api.post("/staff/members/", form);
+        await api.post("/staff/members/", payload);
         toast.success("Staff added!");
       }
       onSave();
@@ -34,54 +703,60 @@ function StaffModal({ staff, onClose, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-title">{staff?.id ? "Edit Staff" : "Add Staff Member"}</div>
-        <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:14}}>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Full Name *</label>
               <input className="form-input" value={form.name}
-                onChange={e=>set("name",e.target.value)} required/>
+                onChange={e => set("name", e.target.value)} required />
             </div>
             <div className="form-group">
               <label className="form-label">Phone *</label>
               <input className="form-input" value={form.phone}
-                onChange={e=>set("phone",e.target.value)} required/>
+                onChange={e => set("phone", e.target.value)} required />
             </div>
             <div className="form-group">
               <label className="form-label">Email</label>
               <input className="form-input" type="email" value={form.email}
-                onChange={e=>set("email",e.target.value)}/>
+                onChange={e => set("email", e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Role</label>
               <select className="form-input" value={form.role}
-                onChange={e=>set("role",e.target.value)}>
-                {ROLES.map(r=>(
-                  <option key={r} value={r}>
-                    {r.charAt(0).toUpperCase()+r.slice(1)}
-                  </option>
+                onChange={e => set("role", e.target.value)}>
+                {ROLES.map(r => (
+                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Shift</label>
-              <select className="form-input" value={form.shift}
-                onChange={e=>set("shift",e.target.value)}>
-                {Object.entries(SHIFTS).map(([k,v])=>(
-                  <option key={k} value={k}>{v}</option>
+              <label className="form-label">Shift Template</label>
+              <select className="form-input" value={form.shift_template || ""}
+                onChange={e => set("shift_template", e.target.value || null)}>
+                <option value="">— No shift assigned —</option>
+                {shifts.map(sh => (
+                  <option key={sh.id} value={sh.id}>
+                    {sh.name} · {sh.start_time?.slice(0, 5)}–{sh.end_time?.slice(0, 5)}
+                  </option>
                 ))}
               </select>
+              {shifts.length === 0 && (
+                <span style={{ fontSize: 11, color: "var(--warn)", marginTop: 3, display: "block" }}>
+                  No shifts created yet — add them in the Shifts tab first.
+                </span>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Monthly Salary (₹)</label>
               <input className="form-input" type="number" value={form.salary}
-                onChange={e=>set("salary",e.target.value)}/>
+                onChange={e => set("salary", e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Status</label>
               <select className="form-input" value={form.status}
-                onChange={e=>set("status",e.target.value)}>
+                onChange={e => set("status", e.target.value)}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="on_leave">On Leave</option>
@@ -91,14 +766,12 @@ function StaffModal({ staff, onClose, onSave }) {
           <div className="form-group">
             <label className="form-label">Notes</label>
             <textarea className="form-input" value={form.notes}
-              onChange={e=>set("notes",e.target.value)} rows={2}/>
+              onChange={e => set("notes", e.target.value)} rows={2} />
           </div>
-          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </form>
@@ -114,11 +787,11 @@ function AttendanceModal({ staffList, onClose, onSave }) {
   const [saving,  setSaving]  = useState(false);
 
   const toggle = (id, field, val) =>
-    setRecords(p => ({...p, [id]: {...(p[id]||{status:"present"}), [field]: val}}));
+    setRecords(p => ({ ...p, [id]: { ...(p[id] || { status: "present" }), [field]: val } }));
 
   const submit = async () => {
     setSaving(true);
-    const recs = staffList.filter(s=>s.status==="active").map(s => ({
+    const recs = staffList.filter(s => s.status === "active").map(s => ({
       staff:     s.id,
       date,
       status:    records[s.id]?.status    || "present",
@@ -135,36 +808,27 @@ function AttendanceModal({ staffList, onClose, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
         <div className="modal-title">Mark Attendance</div>
-        <div style={{marginBottom:16}}>
+        <div style={{ marginBottom: 16 }}>
           <label className="form-label">Date</label>
           <input className="form-input" type="date" value={date}
-            onChange={e=>setDate(e.target.value)} style={{maxWidth:180,marginTop:4}}/>
+            onChange={e => setDate(e.target.value)} style={{ maxWidth: 180, marginTop: 4 }} />
         </div>
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th>ID</th><th>Name</th><th>Role</th><th>Status</th>
-              <th>Check In</th><th>Check Out</th>
+              <th>Name</th><th>Role</th><th>Status</th><th>Check In</th><th>Check Out</th>
             </tr></thead>
             <tbody>
-              {staffList.filter(s=>s.status==="active").map(s=>(
+              {staffList.filter(s => s.status === "active").map(s => (
                 <tr key={s.id}>
-                  <td>
-                    <span style={{fontFamily:"var(--font-mono)",fontSize:12,
-                      color:"var(--teal)",fontWeight:700,
-                      background:"rgba(45,255,195,.1)",padding:"2px 8px",
-                      borderRadius:6}}>
-                      {s.staff_id_display||`S${String(s.id).padStart(4,"0")}`}
-                    </span>
-                  </td>
                   <td><b>{s.name}</b></td>
                   <td><span className="badge badge-blue">{s.role}</span></td>
                   <td>
-                    <select className="form-input" style={{minWidth:110}}
-                      value={records[s.id]?.status||"present"}
-                      onChange={e=>toggle(s.id,"status",e.target.value)}>
+                    <select className="form-input" style={{ minWidth: 110 }}
+                      value={records[s.id]?.status || "present"}
+                      onChange={e => toggle(s.id, "status", e.target.value)}>
                       <option value="present">Present</option>
                       <option value="absent">Absent</option>
                       <option value="half">Half Day</option>
@@ -172,21 +836,21 @@ function AttendanceModal({ staffList, onClose, onSave }) {
                     </select>
                   </td>
                   <td>
-                    <input className="form-input" type="time" style={{minWidth:110}}
-                      value={records[s.id]?.check_in||""}
-                      onChange={e=>toggle(s.id,"check_in",e.target.value)}/>
+                    <input className="form-input" type="time" style={{ minWidth: 110 }}
+                      value={records[s.id]?.check_in || ""}
+                      onChange={e => toggle(s.id, "check_in", e.target.value)} />
                   </td>
                   <td>
-                    <input className="form-input" type="time" style={{minWidth:110}}
-                      value={records[s.id]?.check_out||""}
-                      onChange={e=>toggle(s.id,"check_out",e.target.value)}/>
+                    <input className="form-input" type="time" style={{ minWidth: 110 }}
+                      value={records[s.id]?.check_out || ""}
+                      onChange={e => toggle(s.id, "check_out", e.target.value)} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={submit} disabled={saving}>
             {saving ? "Saving…" : "Mark Attendance"}
@@ -197,22 +861,19 @@ function AttendanceModal({ staffList, onClose, onSave }) {
   );
 }
 
-/* ─── Payments Tab ─────────────────────────────────── */
 function PaymentsTab({ staffList }) {
   const now = new Date();
-  const [month,    setMonth]    = useState(now.getMonth()+1);
-  const [year,     setYear]     = useState(now.getFullYear());
-  const [payments, setPayments] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [loaded,   setLoaded]   = useState(false);
+  const [month,      setMonth]      = useState(now.getMonth() + 1);
+  const [year,       setYear]       = useState(now.getFullYear());
+  const [payments,   setPayments]   = useState([]);
+  const [loading,    setLoading]    = useState(false);
+  const [loaded,     setLoaded]     = useState(false);
   const [genLoading, setGenLoading] = useState(false);
 
-  // Load payments for the selected month+year
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Format as YYYY-MM-01 to match month field
-      const monthStr = `${year}-${String(month).padStart(2,"0")}-01`;
+      const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
       const res = await api.get(`/staff/payments/?month=${monthStr}&ordering=staff__name`);
       setPayments(res.data.results || res.data);
       setLoaded(true);
@@ -235,7 +896,7 @@ function PaymentsTab({ staffList }) {
       await api.post(`/staff/payments/${p.id}/mark_paid/`);
       toast.success(`₹${Number(p.amount).toLocaleString("en-IN")} recorded in Finances!`);
       load();
-    } catch(err) { toast.error(err.response?.data?.detail || "Failed"); }
+    } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
   };
 
   const markUnpaid = async (p) => {
@@ -244,42 +905,33 @@ function PaymentsTab({ staffList }) {
       await api.post(`/staff/payments/${p.id}/mark_unpaid/`);
       toast.success("Marked unpaid. Finance expense removed.");
       load();
-    } catch(err) { toast.error(err.response?.data?.detail || "Failed"); }
+    } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
   };
 
-  const pending = payments.filter(p=>p.status==="pending");
-  const paid    = payments.filter(p=>p.status==="paid");
-  const totalPending = pending.reduce((s,p)=>s+parseFloat(p.amount||0),0);
-  const totalPaid    = paid.reduce((s,p)=>s+parseFloat(p.amount||0),0);
-
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
-                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const pending      = payments.filter(p => p.status === "pending");
+  const paid         = payments.filter(p => p.status === "paid");
+  const totalPending = pending.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const totalPaid    = paid.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
   return (
     <div>
-      {/* ── Controls ── */}
       <div style={{
-        background:"var(--surface)", border:"1px solid var(--border)",
-        borderRadius:"var(--radius)", padding:"16px 20px",
-        display:"flex", alignItems:"flex-end", gap:12,
-        flexWrap:"wrap", marginBottom:16
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: "var(--radius)", padding: "16px 20px",
+        display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16,
       }}>
-        <div className="form-group" style={{margin:0}}>
+        <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">Month</label>
-          <select className="form-input" style={{minWidth:100}} value={month}
-            onChange={e=>setMonth(+e.target.value)}>
-            {MONTHS.map((m,i)=>(
-              <option key={i} value={i+1}>{m}</option>
-            ))}
+          <select className="form-input" style={{ minWidth: 100 }} value={month}
+            onChange={e => setMonth(+e.target.value)}>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
         </div>
-        <div className="form-group" style={{margin:0}}>
+        <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">Year</label>
-          <select className="form-input" style={{minWidth:90}} value={year}
-            onChange={e=>setYear(+e.target.value)}>
-            {[2024,2025,2026,2027].map(y=>(
-              <option key={y} value={y}>{y}</option>
-            ))}
+          <select className="form-input" style={{ minWidth: 90 }} value={year}
+            onChange={e => setYear(+e.target.value)}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         <button className="btn btn-primary" onClick={load} disabled={loading}>
@@ -288,28 +940,24 @@ function PaymentsTab({ staffList }) {
         <button className="btn btn-secondary" onClick={generate} disabled={genLoading}>
           {genLoading ? "Generating…" : "Generate Salaries"}
         </button>
-        <div style={{marginLeft:"auto",fontSize:12,color:"var(--text3)",lineHeight:1.5}}>
-          Generate creates pending salary records<br/>for all active staff for selected month.
-        </div>
       </div>
 
-      {/* ── Summary cards ── */}
       {loaded && (
-        <div className="grid-3" style={{marginBottom:16}}>
+        <div className="grid-3" style={{ marginBottom: 16 }}>
           <div className="stat-card">
             <div className="label">Total Staff</div>
             <div className="value">{payments.length}</div>
           </div>
           <div className="stat-card">
             <div className="label">Pending Salary</div>
-            <div className="value" style={{color:"var(--warn)"}}>
+            <div className="value" style={{ color: "var(--warn)" }}>
               ₹{totalPending.toLocaleString("en-IN")}
             </div>
             <div className="sub">{pending.length} staff unpaid</div>
           </div>
           <div className="stat-card">
             <div className="label">Paid Out</div>
-            <div className="value" style={{color:"var(--accent)"}}>
+            <div className="value" style={{ color: "var(--accent)" }}>
               ₹{totalPaid.toLocaleString("en-IN")}
             </div>
             <div className="sub">{paid.length} staff paid</div>
@@ -317,87 +965,56 @@ function PaymentsTab({ staffList }) {
         </div>
       )}
 
-      {/* ── Table ── */}
       {!loaded ? (
-        <div style={{
-          textAlign:"center", padding:"60px 20px",
-          color:"var(--text3)", fontSize:14,
-          background:"var(--surface)", borderRadius:"var(--radius)",
-          border:"1px solid var(--border)"
-        }}>
-          Select month & year above, then click <b style={{color:"var(--text2)"}}>Load Records</b>
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--text3)",
+          fontSize: 14, background: "var(--surface)", borderRadius: "var(--radius)",
+          border: "1px solid var(--border)" }}>
+          Select month & year, then click <b style={{ color: "var(--text2)" }}>Load Records</b>
         </div>
       ) : loading ? (
-        <div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>Loading…</div>
+        <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>Loading…</div>
       ) : payments.length === 0 ? (
-        <div style={{
-          textAlign:"center", padding:"48px 20px",
-          color:"var(--text3)", fontSize:13,
-          background:"var(--surface)", borderRadius:"var(--radius)",
-          border:"1px solid var(--border)"
-        }}>
-          No salary records for {MONTHS[month-1]} {year}.<br/>
-          <span style={{color:"var(--text2)"}}>Click "Generate Salaries" to create them.</span>
+        <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--text3)",
+          fontSize: 13, background: "var(--surface)", borderRadius: "var(--radius)",
+          border: "1px solid var(--border)" }}>
+          No salary records for {MONTHS[month - 1]} {year}.<br />
+          <span style={{ color: "var(--text2)" }}>Click "Generate Salaries" to create them.</span>
         </div>
       ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Staff Name</th>
-                  <th>Role</th>
-                  <th>Shift</th>
-                  <th>Amount</th>
-                  <th>Paid Date</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th>Staff Name</th><th>Role</th><th>Shift</th>
+                <th>Amount</th><th>Paid Date</th><th>Status</th><th>Action</th>
+              </tr></thead>
               <tbody>
-                {/* Pending first, then paid */}
-                {[...pending, ...paid].map(p=>(
-                  <tr key={p.id} style={{
-                    opacity: p.status==="paid" ? 0.75 : 1
-                  }}>
+                {[...pending, ...paid].map(p => (
+                  <tr key={p.id} style={{ opacity: p.status === "paid" ? 0.75 : 1 }}>
                     <td><b>{p.staff_name}</b></td>
-                    <td>
-                      <span className="badge badge-blue" style={{fontSize:10}}>
-                        {p.staff_role||"—"}
-                      </span>
+                    <td><span className="badge badge-blue" style={{ fontSize: 10 }}>{p.staff_role || "—"}</span></td>
+                    <td style={{ fontSize: 12, color: "var(--text3)" }}>
+                      {p.staff_shift ? SHIFTS[p.staff_shift] || p.staff_shift : "—"}
                     </td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>
-                      {p.staff_shift ? SHIFTS[p.staff_shift]||p.staff_shift : "—"}
-                    </td>
-                    <td style={{
-                      fontFamily:"var(--font-mono)", fontWeight:600,
-                      color: p.status==="paid" ? "var(--accent)" : "var(--warn)"
-                    }}>
+                    <td style={{ fontFamily: "var(--font-mono)", fontWeight: 600,
+                      color: p.status === "paid" ? "var(--accent)" : "var(--warn)" }}>
                       ₹{Number(p.amount).toLocaleString("en-IN")}
                     </td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>
-                      {p.paid_date || "—"}
-                    </td>
+                    <td style={{ fontSize: 12, color: "var(--text3)" }}>{p.paid_date || "—"}</td>
                     <td>
-                      <span className={`badge ${p.status==="paid"?"badge-green":"badge-yellow"}`}>
+                      <span className={`badge ${p.status === "paid" ? "badge-green" : "badge-yellow"}`}>
                         {p.status}
                       </span>
                     </td>
                     <td>
                       {p.status !== "paid" ? (
-                        <button className="btn btn-sm btn-primary" onClick={()=>markPaid(p)}>
+                        <button className="btn btn-sm btn-primary" onClick={() => markPaid(p)}>
                           ✓ Mark Paid
                         </button>
                       ) : (
-                        <button
-                          className="btn btn-sm"
-                          style={{
-                            background:"rgba(255,91,91,.12)",
-                            color:"var(--danger)",
-                            border:"1px solid rgba(255,91,91,.25)"
-                          }}
-                          onClick={()=>markUnpaid(p)}
-                        >
+                        <button className="btn btn-sm"
+                          style={{ background: "rgba(255,91,91,.12)", color: "var(--danger)", border: "1px solid rgba(255,91,91,.25)" }}
+                          onClick={() => markUnpaid(p)}>
                           ↩ Undo
                         </button>
                       )}
@@ -413,7 +1030,8 @@ function PaymentsTab({ staffList }) {
   );
 }
 
-/* ─── Main Staff page ──────────────────────────────── */
+// ─── Main Staff Page ─────────────────────────────────────────────────────────
+
 export default function Staff() {
   const [staffList,  setStaffList]  = useState([]);
   const [attendance, setAttendance] = useState([]);
@@ -421,6 +1039,8 @@ export default function Staff() {
   const [modal,      setModal]      = useState(null);
   const [selected,   setSelected]   = useState(null);
   const [loading,    setLoading]    = useState(true);
+  // Calendar drill-down: { id, name } or null
+  const [calStaff,   setCalStaff]   = useState(null);
 
   useEffect(() => {
     document.getElementById("page-title").textContent = "Staff";
@@ -433,12 +1053,31 @@ export default function Staff() {
         api.get("/staff/members/"),
         api.get("/staff/attendance/today/"),
       ]);
-      setStaffList(s.data.results||s.data);
+      setStaffList(s.data.results || s.data);
       setAttendance(a.data);
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // If viewing a calendar, render it full-page instead of the tab content
+  if (calStaff) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-title">Staff Management</div>
+            <div className="page-subtitle">Attendance Calendar — {calStaff.name}</div>
+          </div>
+        </div>
+        <StaffCalendar
+          staffId={calStaff.id}
+          staffName={calStaff.name}
+          onBack={() => setCalStaff(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -447,14 +1086,14 @@ export default function Staff() {
           <div className="page-title">Staff Management</div>
           <div className="page-subtitle">Attendance, shifts and salary tracking</div>
         </div>
-        <div style={{display:"flex",gap:10}}>
-          {tab==="attendance" && (
-            <button className="btn btn-secondary" onClick={()=>setModal("attendance")}>
+        <div style={{ display: "flex", gap: 10 }}>
+          {tab === "attendance" && (
+            <button className="btn btn-secondary" onClick={() => setModal("attendance")}>
               Mark Attendance
             </button>
           )}
-          {tab==="staff" && (
-            <button className="btn btn-primary" onClick={()=>setModal("add")}>
+          {tab === "staff" && (
+            <button className="btn btn-primary" onClick={() => setModal("add")}>
               + Add Staff
             </button>
           )}
@@ -463,46 +1102,65 @@ export default function Staff() {
 
       {/* Tabs */}
       <div className="staff-tabs">
-        {["staff","attendance","payments"].map(t=>(
+        {["staff", "attendance", "shifts", "payments"].map(t => (
           <button key={t}
-            className={`staff-tab ${tab===t?"staff-tab--active":""}`}
-            onClick={()=>setTab(t)}>
-            {t.charAt(0).toUpperCase()+t.slice(1)}
+            className={`staff-tab ${tab === t ? "staff-tab--active" : ""}`}
+            onClick={() => setTab(t)}>
+            {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
 
       {/* ── Staff list ── */}
-      {tab==="staff" && (
+      {tab === "staff" && (
         <div className="card">
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>Name</th><th>Role</th><th>Shift</th>
+                <th>ID</th><th>Name</th><th>Role</th><th>Shift</th>
                 <th>Phone</th><th>Salary</th><th>Status</th><th>Actions</th>
               </tr></thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>Loading…</td></tr>
-                ) : staffList.map(s=>(
+                  <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--text3)" }}>Loading…</td></tr>
+                ) : staffList.map(s => (
                   <tr key={s.id}>
+                    <td>
+                      <span className="staff-id">
+                        {s.staff_id_display || `S${String(s.id).padStart(4, "0")}`}
+                      </span>
+                    </td>
                     <td><b>{s.name}</b></td>
                     <td><span className="badge badge-blue">{s.role}</span></td>
-                    <td style={{fontSize:12,color:"var(--text2)"}}>{SHIFTS[s.shift]||s.shift}</td>
-                    <td style={{color:"var(--text3)"}}>{s.phone}</td>
-                    <td style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--accent)"}}>
+                    <td style={{ fontSize: 12, color: "var(--text2)" }}>
+                      {s.shift_template_name ? (
+                        <span style={{ color: "var(--accent)", fontWeight: 600 }}>
+                          {s.shift_template_name}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--text3)", fontSize: 11 }}>No shift assigned</span>
+                      )}
+                    </td>
+                    <td style={{ color: "var(--text3)" }}>{s.phone}</td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)" }}>
                       ₹{Number(s.salary).toLocaleString("en-IN")}
                     </td>
                     <td>
                       <span className={`badge ${
-                        s.status==="active"   ? "badge-green" :
-                        s.status==="on_leave" ? "badge-yellow" : "badge-gray"
+                        s.status === "active"   ? "badge-green" :
+                        s.status === "on_leave" ? "badge-yellow" : "badge-gray"
                       }`}>{s.status}</span>
                     </td>
-                    <td>
+                    <td style={{ display: "flex", gap: 6 }}>
                       <button className="btn btn-sm btn-secondary"
-                        onClick={()=>{setSelected(s);setModal("edit");}}>
+                        onClick={() => { setSelected(s); setModal("edit"); }}>
                         Edit
+                      </button>
+                      <button className="btn btn-sm"
+                        style={{ background: "rgba(168,255,87,.1)", color: "var(--accent)",
+                          border: "1px solid rgba(168,255,87,.2)" }}
+                        onClick={() => setCalStaff({ id: s.id, name: s.name })}>
+                        📅 Calendar
                       </button>
                     </td>
                   </tr>
@@ -513,69 +1171,119 @@ export default function Staff() {
         </div>
       )}
 
-      {/* ── Attendance ── */}
-      {tab==="attendance" && (
+      {/* ── Today's attendance ── */}
+      {tab === "attendance" && (
         <div className="card">
-          <div style={{
-            padding:"14px 18px", borderBottom:"1px solid var(--border)",
-            fontFamily:"var(--font-display)", fontSize:14, fontWeight:700
-          }}>
-            Today's Attendance
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)",
+            display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 700 }}>
+              Today's Attendance
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text3)" }}>
+              Worked / Late / OT only show for staff with a Shift Template assigned
+            </span>
           </div>
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>Name</th><th>Status</th><th>Check In</th><th>Check Out</th>
+                <th>Name</th>
+                <th>Shift</th>
+                <th>Expected Hrs</th>
+                <th>Status</th>
+                <th>Check In</th>
+                <th>Check Out</th>
+                <th>Worked</th>
+                <th>vs Shift</th>
+                <th>Late</th>
+                <th>OT</th>
               </tr></thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={4} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>Loading…</td></tr>
-                ) : attendance.length===0 ? (
-                  <tr><td colSpan={4} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>
-                    No attendance marked today. Click "Mark Attendance".
+                  <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: "var(--text3)" }}>Loading…</td></tr>
+                ) : attendance.length === 0 ? (
+                  <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: "var(--text3)" }}>
+                    No attendance marked today.
                   </td></tr>
-                ) : attendance.map(a=>(
-                  <tr key={a.id}>
-                    <td><b>{a.staff_name}</b></td>
-                    <td>
-                      <span className={`badge ${
-                        a.status==="present" ? "badge-green" :
-                        a.status==="absent"  ? "badge-red" : "badge-yellow"
-                      }`}>{a.status}</span>
-                    </td>
-                    <td style={{color:"var(--text2)",fontSize:12}}>{a.check_in||"—"}</td>
-                    <td style={{color:"var(--text2)",fontSize:12}}>{a.check_out||"—"}</td>
-                  </tr>
-                ))}
+                ) : attendance.map(a => {
+                  // Find shift template for this staff member from staffList
+                  const staffMember  = staffList.find(s => s.id === a.staff);
+                  const shiftTmpl    = staffMember?.shift_template_name || null;
+                  const hasShift     = !!staffMember?.shift_template;
+                  const shiftMins    = staffMember?.shift_duration_minutes || 0;
+
+                  // vs-shift comparison
+                  let vsShift = null;
+                  if (hasShift && a.worked_minutes > 0 && shiftMins > 0) {
+                    const diff = a.worked_minutes - shiftMins;
+                    if (diff < -30)      vsShift = { label: `↓ ${fmt_mins(-diff)} short`, color: "#ef4444" };
+                    else if (diff > 30)  vsShift = { label: `↑ ${fmt_mins(diff)} extra`,  color: "#3b82f6" };
+                    else                 vsShift = { label: "On time", color: "#22c55e" };
+                  }
+
+                  return (
+                    <tr key={a.id}>
+                      <td><b>{a.staff_name}</b></td>
+                      <td style={{ fontSize: 11, color: "var(--text2)" }}>
+                        {shiftTmpl || <span style={{ color: "var(--text3)" }}>No shift</span>}
+                      </td>
+                      <td style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text3)" }}>
+                        {hasShift && shiftMins ? fmt_mins(shiftMins) : "—"}
+                      </td>
+                      <td>
+                        <span style={{
+                          padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                          background: STATUS_META[a.status]?.bg    || "var(--surface2)",
+                          color:      STATUS_META[a.status]?.color || "var(--text2)",
+                        }}>
+                          {STATUS_META[a.status]?.label || a.status}
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--teal)" }}>
+                        {a.check_in || "—"}
+                      </td>
+                      <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text2)" }}>
+                        {a.check_out || "—"}
+                      </td>
+                      <td style={{ fontSize: 12, color: a.worked_minutes > 0 ? "var(--text1)" : "var(--text3)",
+                        fontFamily: "var(--font-mono)" }}>
+                        {a.worked_minutes > 0 ? fmt_mins(a.worked_minutes) : (a.check_in && !a.check_out ? "In progress" : "—")}
+                      </td>
+                      <td style={{ fontSize: 11, fontWeight: 700, color: vsShift?.color || "var(--text3)" }}>
+                        {vsShift?.label || (hasShift ? "—" : <span style={{ color: "var(--text3)", fontSize: 10 }}>no shift</span>)}
+                      </td>
+                      <td style={{ fontSize: 12, fontWeight: 700,
+                        color: a.late_minutes > 0 ? "#f97316" : "var(--text3)" }}>
+                        {a.late_minutes > 0 ? `+${a.late_minutes}m` : (hasShift ? "—" : <span style={{ fontSize: 10 }}>—</span>)}
+                      </td>
+                      <td style={{ fontSize: 12, fontWeight: 700,
+                        color: a.overtime_minutes > 0 ? "#3b82f6" : "var(--text3)" }}>
+                        {a.overtime_minutes > 0 ? `+${a.overtime_minutes}m` : (hasShift ? "—" : <span style={{ fontSize: 10 }}>—</span>)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
+      {/* ── Shifts tab ── */}
+      {tab === "shifts" && <ShiftsTab />}
+
       {/* ── Payments tab ── */}
-      {tab==="payments" && <PaymentsTab staffList={staffList}/>}
+      {tab === "payments" && <PaymentsTab staffList={staffList} />}
 
       {/* Modals */}
-      {modal==="add" && (
-        <StaffModal
-          onClose={()=>setModal(null)}
-          onSave={()=>{setModal(null);load();}}
-        />
+      {modal === "add" && (
+        <StaffModal onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />
       )}
-      {modal==="edit" && selected && (
-        <StaffModal
-          staff={selected}
-          onClose={()=>setModal(null)}
-          onSave={()=>{setModal(null);load();}}
-        />
+      {modal === "edit" && selected && (
+        <StaffModal staff={selected} onClose={() => setModal(null)} onSave={() => { setModal(null); load(); }} />
       )}
-      {modal==="attendance" && (
-        <AttendanceModal
-          staffList={staffList}
-          onClose={()=>setModal(null)}
-          onSave={()=>{setModal(null);load();}}
-        />
+      {modal === "attendance" && (
+        <AttendanceModal staffList={staffList} onClose={() => setModal(null)}
+          onSave={() => { setModal(null); load(); }} />
       )}
     </div>
   );

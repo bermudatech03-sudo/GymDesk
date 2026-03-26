@@ -56,22 +56,23 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = 'gym_crm.wsgi.application'
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': config('DB_NAME', default='gym_crm'),
-#         'USER': config('DB_USER', default='postgres'),
-#         'PASSWORD': config('DB_PASSWORD', default='postgres'),
-#         'HOST': config('DB_HOST', default='localhost'),
-#         'PORT': config('DB_PORT', default='5432'),
-#     }
-# }
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='gymdesk'),
+        'USER': config('DB_USER', default='postgres'),
+        'PASSWORD': config('DB_PASSWORD', default='postgres'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -125,3 +126,10 @@ TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
 TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
 TWILIO_WHATSAPP_FROM = config('TWILIO_WHATSAPP_FROM', default='whatsapp:+14155238886')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+
+GST_RATE    = 18
+GYM_NAME    = "Light Weight Fitness Gym"
+GYM_ADDRESS = "Chennai, Tamil Nadu — India"
+GYM_PHONE   = "+91 97907 28732"
+GYM_EMAIL   = "bermudatech@gmail.com"
+GYM_GSTIN   = "33AAAAA0000A1Z5"

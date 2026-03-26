@@ -1,0 +1,329 @@
+/* ══════════════════════════════════════════════════════
+   MonthlyReport.css
+   The report modal has two zones:
+     1. .report-controls  — dark-themed sticky bar (uses CSS vars)
+     2. .rp               — light-background printable area (fully isolated,
+                            NO CSS variable usage — all explicit hex values)
+   ══════════════════════════════════════════════════════ */
+
+/* ── Modal shell ──────────────────────────────────────── */
+.report-modal {
+  max-width: 940px;
+  width: 96vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;           /* FIX: prevent horizontal scroll on modal */
+  padding: 0;
+  background: #fff;
+}
+
+/* ── Controls bar (dark-theme, uses CSS vars) ─────────── */
+.report-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* ══════════════════════════════════════════════════════
+   PRINTABLE AREA — ALL VALUES EXPLICIT, NO CSS VARS
+   ══════════════════════════════════════════════════════ */
+
+.rp {
+  background: #fff;
+  color: #111;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  /* FIX: contain everything, no bleed-out */
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* ── Report header band ─────────────────────────────── */
+.rp-header {
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: #fff;
+  padding: 24px 24px 20px;   /* FIX: 32px → 24px side padding to match body */
+}
+
+.rp-header h1 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin: 0 0 6px;
+  color: #fff;               /* explicit white — prevents dark-theme var override */
+}
+
+.rp-gym-info {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.rp-period {
+  display: inline-block;
+  margin-top: 10px;
+  background: rgba(168, 255, 87, 0.15);
+  color: #a8ff57;            /* explicit — not a var */
+  border: 1px solid rgba(168, 255, 87, 0.35);
+  border-radius: 100px;
+  padding: 3px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* ── Report body ────────────────────────────────────── */
+.rp-body {
+  padding: 24px 24px 28px;   /* FIX: 32px → 24px so content fits within modal width */
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ── Summary grid ───────────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.summary-box {
+  border: 1px solid #e4e4e4;
+  border-radius: 8px;
+  padding: 12px 8px;
+  text-align: center;
+  background: #f9f9f9;
+  min-width: 0;              /* FIX: allows grid cells to shrink below content width */
+}
+
+.summary-box .s-lbl {
+  font-size: 9px;            /* FIX: slightly smaller to prevent overflow in 5-col grid */
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 7px;
+  line-height: 1.4;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.summary-box .s-val {
+  font-size: 13px;           /* FIX: 14→13 to avoid overflow on large ₹ amounts */
+  font-weight: 800;
+  font-family: 'Courier New', monospace;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+/* Colour utilities — explicit hex, never CSS vars */
+.s-green { color: #1a7a00; }
+.s-red   { color: #cc0000; }
+.s-blue  { color: #1a3a9a; }
+
+/* ── Section titles ─────────────────────────────────── */
+.rp-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 22px 0 10px;
+  padding-bottom: 7px;
+  border-bottom: 2px solid #1a1a2e;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #1a1a2e;            /* FIX: explicit dark — not a CSS var */
+}
+
+.rp-section-title .count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  background: #f0f0f0;
+  padding: 2px 9px;
+  border-radius: 100px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── Table wrapper — FIX horizontal overflow ────────── */
+.rp-table-wrap {
+  width: 100%;
+  overflow-x: auto;          /* scroll on very narrow screens; table never pushes page */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Main data tables ───────────────────────────────── */
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;           /* FIX: 12→11 to give columns more breathing room */
+  margin-bottom: 4px;
+  color: #333;
+  table-layout: fixed;       /* FIX: honour col widths, prevents auto-expand overflow */
+}
+
+.rp-table thead tr {
+  background: #f5f5f5;
+}
+
+.rp-table th {
+  padding: 7px 8px;          /* FIX: 10→8px horizontal padding */
+  text-align: left;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #555;
+  border-bottom: 2px solid #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.rp-table th.r { text-align: right; }
+.rp-table th.c { text-align: center; }
+
+.rp-table td {
+  padding: 6px 8px;          /* FIX: reduced horizontal padding */
+  border-bottom: 1px solid #f2f2f2;
+  vertical-align: middle;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-table td.r    { text-align: right; font-family: 'Courier New', monospace; }
+.rp-table td.c    { text-align: center; }
+.rp-table td.mono { font-family: 'Courier New', monospace; font-size: 10px; color: #666; }
+
+.rp-table tbody tr:hover td {
+  background: #fafafa;
+}
+
+.rp-table .total-row td {
+  font-weight: 800;
+  font-size: 11.5px;
+  background: #f0f0f0;
+  border-top: 2px solid #ccc;
+  border-bottom: none;
+  padding: 8px 8px;
+}
+
+/* ── Income table — fixed column widths ─────────────── */
+/* 8 columns: Date · Invoice · Source · Category · Base · GST% · GST Amt · Total */
+.income-table col.col-date  { width: 9%;  }
+.income-table col.col-inv   { width: 11%; }
+.income-table col.col-src   { width: 18%; }
+.income-table col.col-cat   { width: 14%; }
+.income-table col.col-base  { width: 12%; }
+.income-table col.col-gp    { width: 7%;  }
+.income-table col.col-gamt  { width: 12%; }
+.income-table col.col-total { width: 17%; }
+
+/* ── Expense table — fixed column widths ────────────── */
+/* 5 columns: Date · Description · Category · Vendor · Amount */
+.expense-table col.col-date   { width: 10%; }
+.expense-table col.col-desc   { width: 32%; }
+.expense-table col.col-cat    { width: 20%; }
+.expense-table col.col-vendor { width: 24%; }
+.expense-table col.col-amt    { width: 14%; }
+
+/* ── GST + P&L summary tables ───────────────────────── */
+.gst-table {
+  width: 100%;
+  max-width: 440px;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #333;               /* FIX: explicit — prevents dark-theme colour inheritance */
+}
+
+.gst-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #eee;
+  color: #333;               /* FIX: row cells need explicit colour too */
+}
+
+.gst-table td:last-child {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  min-width: 130px;
+  color: #333;               /* FIX: default value colour — coloured variants below */
+}
+
+/* Colour overrides for specific value cells */
+.gst-table td.s-green { color: #1a7a00; }
+.gst-table td.s-red   { color: #cc0000; }
+
+.gst-table .gst-total td {
+  font-size: 14px;
+  font-weight: 800;
+  background: #f5f5f5;
+  border-top: 2px solid #ccc;
+  border-bottom: none;
+  padding: 10px 14px;
+  color: #111;
+}
+
+.gst-table .gst-total td:last-child {
+  color: #cc0000;
+}
+
+/* ── Report footer ──────────────────────────────────── */
+.rp-footer {
+  margin-top: 0;
+  text-align: center;
+  font-size: 11px;
+  color: #aaa;
+  border-top: 1px solid #eee;
+  padding: 14px 24px;
+  background: #fafafa;
+  line-height: 1.8;
+}
+
+/* ══════════════════════════════════════════════════════
+   PRINT STYLES
+   ══════════════════════════════════════════════════════ */
+@media print {
+  .no-print          { display: none !important; }
+  .report-modal      { max-height: none; overflow: visible; box-shadow: none; border-radius: 0; }
+  .rp                { font-size: 11px; }
+  .rp-header         { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .summary-grid      { grid-template-columns: repeat(5, 1fr); }
+  .rp-table th,
+  .rp-table td       { padding: 5px 6px; }
+  .gst-table td      { padding: 6px 10px; }
+  .rp-table-wrap     { overflow-x: visible; }
+}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE — narrow screens
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 680px) {
+  .summary-grid          { grid-template-columns: repeat(2, 1fr); }
+  .rp-body               { padding: 16px 14px 24px; }
+  .rp-header             { padding: 18px 14px; }
+  .rp-table              { font-size: 10px; }
+  .rp-table th,
+  .rp-table td           { padding: 5px 6px; }
+  .gst-table             { max-width: 100%; }
+  .report-controls       { gap: 8px; }
+  /* On mobile, let income table scroll rather than crunch 8 columns */
+  .rp-table-wrap         { overflow-x: auto; }
+}

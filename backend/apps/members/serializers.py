@@ -1,11 +1,33 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Member, MembershipPlan, MemberPayment, MemberAttendance
+from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance
 
 class PlanSerializer(serializers.ModelSerializer):
+    
     class Meta:
         model  = MembershipPlan
         fields = "__all__"
+
+class DietSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Diet
+        fields = "__all__"
+
+class DietPlanSerializer(serializers.ModelSerializer):
+    items                  = DietSerializer(many=True, read_only=True)
+    assigned_members_count = serializers.SerializerMethodField()
+    assigned_members       = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = DietPlan
+        fields = "__all__"
+
+    def get_assigned_members_count(self, obj):
+        return obj.member_set.count()
+
+    def get_assigned_members(self, obj):
+        return list(obj.member_set.values_list("name", flat=True))
+
 
 class MemberPaymentSerializer(serializers.ModelSerializer):
     plan_name   = serializers.CharField(source="plan.name",   read_only=True)
@@ -17,6 +39,8 @@ class MemberPaymentSerializer(serializers.ModelSerializer):
 class MemberSerializer(serializers.ModelSerializer):
     plan_name         = serializers.CharField(source="plan.name",  read_only=True)
     plan_price_val    = serializers.DecimalField(source="plan.price", max_digits=10, decimal_places=2, read_only=True)
+    diet_id           = serializers.IntegerField(source="diet.id",  read_only=True)
+    diet_name         = serializers.CharField(source="diet.name",  read_only=True)
     days_until_expiry = serializers.SerializerMethodField()
     total_paid        = serializers.SerializerMethodField()
     balance_due       = serializers.SerializerMethodField()
@@ -47,6 +71,7 @@ class EnrollSerializer(serializers.Serializer):
     gender       = serializers.CharField(required=False, allow_blank=True)
     address      = serializers.CharField(required=False, allow_blank=True)
     plan_id      = serializers.IntegerField(required=False, allow_null=True)
+    diet_id      = serializers.IntegerField(required=False, allow_null=True)
     join_date    = serializers.DateField(required=False)
     renewal_date = serializers.DateField(required=False, allow_null=True)
     amount_paid  = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, default=0)

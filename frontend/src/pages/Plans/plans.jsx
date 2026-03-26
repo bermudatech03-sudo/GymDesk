@@ -29,6 +29,7 @@ function PlanModal({ plan, onClose, onSave }) {
     } finally {
       setSaving(false);
     }
+
   };
 
   return (
@@ -37,7 +38,7 @@ function PlanModal({ plan, onClose, onSave }) {
         <div className="modal-title">
           {plan?.id ? "Edit Plan" : "Add Membership Plan"}
         </div>
-        <form onSubmit={submit} style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           <div className="form-group">
             <label className="form-label">Plan Name *</label>
@@ -101,7 +102,19 @@ function PlanModal({ plan, onClose, onSave }) {
             </select>
           </div>
 
-          <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:4 }}>
+          <div className="form-group">
+            <label className="form-label">Status</label>
+            <select
+              className="form-input"
+              value={form.plans}
+              onChange={e => set("plans", e.target.value)}
+            >
+              <option value="basic">Basic Plan</option>
+              <option value="standard">Standard Plan</option>
+              <option value="premium">Premium Plan</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
@@ -116,9 +129,9 @@ function PlanModal({ plan, onClose, onSave }) {
 }
 
 export default function Plans() {
-  const [plans,    setPlans]    = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [modal,    setModal]    = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
@@ -154,10 +167,10 @@ export default function Plans() {
     load();
   };
 
-  const openAdd    = ()  => { setSelected(null); setModal(true); };
-  const openEdit   = (p) => { setSelected(p);    setModal(true); };
-  const closeModal = ()  => { setModal(false);   setSelected(null); };
-  const afterSave  = ()  => { closeModal();      load(); };
+  const openAdd = () => { setSelected(null); setModal(true); };
+  const openEdit = (p) => { setSelected(p); setModal(true); };
+  const closeModal = () => { setModal(false); setSelected(null); };
+  const afterSave = () => { closeModal(); load(); };
 
   return (
     <div>
@@ -174,7 +187,7 @@ export default function Plans() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign:"center", padding:60, color:"var(--text3)", fontSize:14 }}>
+        <div style={{ textAlign: "center", padding: 60, color: "var(--text3)", fontSize: 14 }}>
           Loading plans…
         </div>
       ) : plans.length === 0 ? (
@@ -185,7 +198,7 @@ export default function Plans() {
             Create your first membership plan. Once added, plans appear in the
             member enrollment form automatically.
           </div>
-          <button className="btn btn-primary" style={{ marginTop:8 }} onClick={openAdd}>
+          <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={openAdd}>
             + Create First Plan
           </button>
         </div>
@@ -221,6 +234,9 @@ export default function Plans() {
                     Delete
                   </button>
                 </div>
+                <div className="plan-card__actions">
+                  <span className="plan-card__id">Plan Type :  {p.plans}</span>
+                </div>
               </div>
 
               <div className="plan-card__name">{p.name}</div>
@@ -231,15 +247,15 @@ export default function Plans() {
               </div>
 
               <div className="plan-card__duration">
-                <span style={{ color:"var(--accent)" }}>◷</span>
+                <span style={{ color: "var(--accent)" }}>◷</span>
                 {p.duration_days} days
                 <span className="plan-card__duration-note">
                   &nbsp;(
                   {p.duration_days >= 365
                     ? `${Math.round(p.duration_days / 365)} year`
                     : p.duration_days >= 30
-                    ? `~${Math.round(p.duration_days / 30)} month${Math.round(p.duration_days/30) > 1 ? "s" : ""}`
-                    : `${p.duration_days} day${p.duration_days > 1 ? "s" : ""}`}
+                      ? `~${Math.round(p.duration_days / 30)} month${Math.round(p.duration_days / 30) > 1 ? "s" : ""}`
+                      : `${p.duration_days} day${p.duration_days > 1 ? "s" : ""}`}
                   )
                 </span>
               </div>

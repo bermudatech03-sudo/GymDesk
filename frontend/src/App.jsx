@@ -1,18 +1,18 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
-import Layout        from "./components/Layout";
-import Kiosk         from "./pages/Kiosk/Kiosk";
-import Login         from "./pages/Login/Login";
-import Dashboard     from "./pages/Dashboard/Dashboard";
-import Members       from "./pages/Members/Members";
-import Staff         from "./pages/Staff/Staff";
-import Equipment     from "./pages/Equipment/Equipment";
-import Finances      from "./pages/Finances/Finances";
+import Layout from "./components/Layout";
+import Kiosk from "./pages/Kiosk/Kiosk";
+import Login from "./pages/Login/Login";
+import Dashboard from "./pages/Dashboard/Dashboard";
+import Members from "./pages/Members/Members";
+import Staff from "./pages/Staff/Staff";
+import Equipment from "./pages/Equipment/Equipment";
+import Finances from "./pages/Finances/Finances";
 import Notifications from "./pages/Notifications/Notifications";
-import Plans         from "./pages/Plans/Plans";
-import Attendance    from "./pages/Attendance/Attendance";
-import Settings      from "./pages/Settings/Settings";
-
+import Plans from "./pages/Plans/Plans";
+import Attendance from "./pages/Attendance/Attendance";
+import Settings from "./pages/Settings/Settings";
+import Diets from "./pages/Diet/DietPage";
 function Protected({ children }) {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" replace />;
@@ -24,21 +24,22 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           {/* Public — no login needed */}
-          <Route path="/login"  element={<Login />} />
-          <Route path="/kiosk"  element={<Kiosk />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/kiosk" element={<Kiosk />} />
 
           {/* Protected dashboard */}
           <Route path="/" element={<Protected><Layout /></Protected>}>
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard"     element={<Dashboard />} />
-            <Route path="members/*"     element={<Members />} />
-            <Route path="plans"         element={<Plans />} />
-            <Route path="staff/*"       element={<Staff />} />
-            <Route path="equipment/*"   element={<Equipment />} />
-            <Route path="finances/*"    element={<Finances />} />
-            <Route path="attendance"    element={<Attendance />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="members/*" element={<Members />} />
+            <Route path="plans" element={<Plans />} />
+            <Route path="diets" element={<Diets />} />
+            <Route path="staff/*" element={<Staff />} />
+            <Route path="equipment/*" element={<Equipment />} />
+            <Route path="finances/*" element={<Finances />} />
+            <Route path="attendance" element={<Attendance />} />
             <Route path="notifications" element={<Notifications />} />
-            <Route path="settings"      element={<Settings />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

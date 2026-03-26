@@ -3,15 +3,17 @@ from django.utils import timezone
 from datetime import timedelta
 
 class MembershipPlan(models.Model):
+    PLAN = [("basic","Basic"),("standard","Standard"),("premium","Premium")]
     name          = models.CharField(max_length=100)
     duration_days = models.PositiveIntegerField(default=30)
     price         = models.DecimalField(max_digits=10, decimal_places=2)
     description   = models.TextField(blank=True)
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
+    plans         = models.CharField(max_length=10, choices=PLAN, default="basic")
 
     def __str__(self):
-        return f"{self.name} ({self.duration_days}d — ₹{self.price})"
+        return f"{self.name} ({self.duration_days}d — ₹{self.price}) {self.plans} "
 
 class Member(models.Model):
     GENDER = [("M","Male"),("F","Female"),("O","Other")]
@@ -25,6 +27,7 @@ class Member(models.Model):
     address      = models.TextField(blank=True)
     photo_url    = models.URLField(blank=True)
     plan         = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    diet         = models.ForeignKey('DietPlan', on_delete=models.SET_NULL, null=True, blank=True)
     join_date    = models.DateField(default=timezone.localdate)
     renewal_date = models.DateField(null=True, blank=True)
     status       = models.CharField(max_length=12, choices=STATUS, default="active")
@@ -114,4 +117,41 @@ class MemberAttendance(models.Model):
         ordering = ["-date", "-check_in"]
  
     def __str__(self):
-        return f"{self.member.name} — {self.date}"  
+        return f"{self.member.name} — {self.date}"
+    
+class DietPlan(models.Model):
+    name       = models.CharField(max_length=100, default="Unnamed Plan")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Diet(models.Model):
+    UNIT_CHOICES = [
+        ("g",     "Grams"),
+        ("kg",    "Kilograms"),
+        ("ml",    "Milliliters"),
+        ("l",     "Liters"),
+        ("cup",   "Cup"),
+        ("tbsp",  "Tablespoon"),
+        ("tsp",   "Teaspoon"),
+        ("piece", "Piece"),
+    ]
+
+    plan     = models.ForeignKey(DietPlan, on_delete=models.CASCADE, related_name="items")
+    time     = models.TimeField()
+    food     = models.CharField(max_length=255)
+    quantity = models.DecimalField(max_digits=7, decimal_places=2, default=1)
+    unit     = models.CharField(max_length=10, choices=UNIT_CHOICES, default="g")
+    calories = models.IntegerField()
+    notes    = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["time"]
+
+    def __str__(self):
+        return f"{self.food} ({self.quantity}{self.unit}) at {self.time} and the note is {self.notes}"
+
+
+

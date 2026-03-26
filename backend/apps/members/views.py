@@ -6,8 +6,8 @@ from rest_framework.permissions import AllowAny
 from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
-from .models import Member, MembershipPlan, MemberPayment, MemberAttendance
-from .serializers import (MemberSerializer, PlanSerializer, MemberPaymentSerializer,
+from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance
+from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, PlanSerializer, MemberPaymentSerializer,
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer)
 from apps.notifications.utils import send_notification
 
@@ -56,10 +56,14 @@ class MemberViewSet(viewsets.ModelViewSet):
         if not renew and plan:
             renew = join + timedelta(days=plan.duration_days)
 
+        diet = None
+        if d.get("diet_id"):
+            diet = DietPlan.objects.filter(pk=d["diet_id"]).first()
+
         member = Member.objects.create(
             name=d["name"], phone=d["phone"],
             email=d.get("email",""), gender=d.get("gender",""),
-            address=d.get("address",""), plan=plan,
+            address=d.get("address",""), plan=plan, diet=diet,
             join_date=join, renewal_date=renew,
             status=d.get("status","active"), notes=d.get("notes",""),
         )
@@ -341,3 +345,39 @@ class KioskMarkAttendanceView(APIView):
                 return Response({"detail":"Staff not found."}, status=404)
 
         return Response({"detail":"Invalid type."}, status=400)
+    
+class DietPlanViewSet(viewsets.ModelViewSet):
+    queryset = DietPlan.objects.prefetch_related("items").all()
+    serializer_class = DietPlanSerializer
+
+    def _save_items(self, plan, items):
+        for item in items:
+            Diet.objects.create(
+                plan=plan,
+                food=item.get("food", ""),
+                time=item.get("time"),
+                quantity=item.get("quantity", 1),
+                unit=item.get("unit", "g"),
+                calories=item.get("calories", 0),
+                notes=item.get("notes", ""),
+            )
+
+    def create(self, request, *args, **kwargs):
+        plan = DietPlan.objects.create(name=request.data.get("name", "Unnamed Plan"))
+        self._save_items(plan, request.data.get("items", []))
+        return Response(DietPlanSerializer(plan).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        print("Updating Diet Plan with data:", request.data.get("items", []))
+        plan = self.get_object()
+        plan.name = request.data.get("name", plan.name)
+        plan.save()
+        plan.items.all().delete()
+        print("Updating Diet Plan with data:", request.data.get("items", []))
+        self._save_items(plan, request.data.get("items", []))
+        return Response(DietPlanSerializer(plan).data)
+
+
+class DietViewSet(viewsets.ModelViewSet):
+    queryset = Diet.objects.all()
+    serializer_class = DietSerializer

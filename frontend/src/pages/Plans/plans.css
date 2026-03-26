@@ -43,7 +43,6 @@
 }
 .plan-card--inactive { opacity: 0.5; }
 .plan-card--inactive::before { background: var(--text3); }
-
 .plan-card__header {
   display: flex;
   align-items: center;

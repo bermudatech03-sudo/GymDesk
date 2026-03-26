@@ -1,0 +1,108 @@
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.modal-header h2 {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text1);
+    margin: 0;
+}
+
+.modal-meta {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 16px;
+}
+
+.modal-meta span {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.plan-name-input {
+    margin-bottom: 20px;
+}
+
+.item-row {
+    display: grid;
+    grid-template-columns: 2fr 80px 90px 110px 80px 36px;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+}
+
+.item-row > input:last-child,
+.item-row.item-row-header > span:last-child {
+    grid-column: 1 / -1;
+}
+
+.item-row > input:last-child {
+    height: 44px;
+    padding: 0 12px;
+}
+
+.item-row-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    padding: 0 2px;
+}
+
+.item-row .form-input {
+    width: 100%;
+}
+
+.btn-remove {
+    background: rgba(255, 91, 91, 0.1);
+    border: 1px solid rgba(255, 91, 91, 0.2);
+    color: var(--danger);
+    border-radius: var(--radius-sm);
+    width: 36px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 15px;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.btn-remove:hover {
+    background: rgba(255, 91, 91, 0.2);
+}
+
+.add-item-btn {
+    background: transparent;
+    border: 1px dashed var(--border2);
+    color: var(--text2);
+    border-radius: var(--radius-sm);
+    padding: 9px 16px;
+    font-size: 13px;
+    width: 100%;
+    cursor: pointer;
+    margin: 4px 0 20px;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.add-item-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+}

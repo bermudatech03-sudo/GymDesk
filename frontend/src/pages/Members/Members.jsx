@@ -9,11 +9,11 @@ function statusBadge(s) {
 }
 
 /* ─── Enroll modal ─────────────────────────────────── */
-function MemberModal({ member, plans, onClose, onSave }) {
+function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
   const isEdit = !!member?.id;
   const [form, setForm] = useState(member
-    ? { ...member, plan: member.plan || "" }
-    : { name:"", phone:"", email:"", gender:"", plan:"",
+    ? { ...member, plan: member.plan || "", diet: member.diet || "" }
+    : { name:"", phone:"", email:"", gender:"", plan:"", diet:"",
         renewal_date:"", notes:"", status:"active", amount_paid:"" }
   );
   const [saving, setSaving] = useState(false);
@@ -32,12 +32,16 @@ function MemberModal({ member, plans, onClose, onSave }) {
     e.preventDefault(); setSaving(true);
     try {
       if (isEdit) {
-        await api.patch(`/members/list/${member.id}/`, form);
+        await api.patch(`/members/list/${member.id}/`, {
+          ...form,
+          diet: form.diet || null,
+        });
         toast.success("Member updated!");
       } else {
         await api.post("/members/list/", {
           ...form,
           plan_id: form.plan || undefined,
+          diet_id: form.diet || undefined,
         });
         toast.success("Member enrolled!");
       }
@@ -93,6 +97,17 @@ function MemberModal({ member, plans, onClose, onSave }) {
                 ))}
               </select>
             </div>
+            <div className="form-group">
+              <label className="form-label">Diet Plan</label>
+              <select className="form-input" value={form.diet||""} onChange={e=>set("diet", e.target.value)}>
+                <option value="">No Diet Plan</option>
+                {dietPlans.map(d=>(
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+
+
             <div className="form-group">
               <label className="form-label">Renewal Date</label>
               <input className="form-input" type="date" value={form.renewal_date||""}
@@ -390,9 +405,10 @@ function PaymentHistoryModal({ member, onClose, onRefresh }) {
 
 /* ─── Main page ────────────────────────────────────── */
 export default function Members() {
-  const [members,  setMembers]  = useState([]);
-  const [plans,    setPlans]    = useState([]);
-  const [search,   setSearch]   = useState("");
+  const [members,   setMembers]   = useState([]);
+  const [plans,     setPlans]     = useState([]);
+  const [dietPlans, setDietPlans] = useState([]);
+  const [search,    setSearch]    = useState("");
   const [filter,   setFilter]   = useState("all");
   const [loading,  setLoading]  = useState(true);
   const [modal,    setModal]    = useState(null);
@@ -409,13 +425,15 @@ export default function Members() {
     try {
       const params = { search, page };
       if (filter !== "all") params.status = filter;
-      const [mRes, pRes] = await Promise.all([
+      const [mRes, pRes, dRes] = await Promise.all([
         api.get("/members/list/", { params }),
         api.get("/members/plans/?active_only=true"),
+        api.get("/members/diet-plans/"),
       ]);
       setMembers(mRes.data.results || mRes.data);
       setCount(mRes.data.count || 0);
       setPlans(pRes.data.results || pRes.data);
+      setDietPlans(Array.isArray(dRes.data) ? dRes.data : (dRes.data.results ?? []));
     } finally { setLoading(false); }
   }, [search, filter, page]);
 
@@ -426,18 +444,25 @@ export default function Members() {
 
   const cancelMember = async (m) => {
     if (!confirm(`Cancel membership for ${m.name}?`)) return;
-    await api.post(`/members/list/${m.id}/cancel/`, { reason:"Admin cancelled" });
-    toast.success("Member cancelled");
-    load();
+    try {
+      await api.post(`/members/list/${m.id}/cancel/`, { reason: "Admin cancelled" });
+      toast.success("Member cancelled");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to cancel member");
+    }
   };
 
-
   const deleteMember = async (m) => {
-  if (!confirm(`PERMANENTLY DELETE ${m.name}? This cannot be undone and removes all payment history.`)) return;
-  await api.delete(`/members/list/${m.id}/`);
-  toast.success("Member deleted permanently");
-  load();
-};
+    if (!confirm(`PERMANENTLY DELETE ${m.name}? This cannot be undone and removes all payment history.`)) return;
+    try {
+      await api.delete(`/members/list/${m.id}/`);
+      toast.success("Member deleted permanently");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to delete member");
+    }
+  };
 
   return (
     <div>
@@ -503,21 +528,30 @@ export default function Members() {
                   </td>
                   <td style={{color:"var(--text2)"}}>{m.phone}</td>
                   <td style={{fontSize:12}}>
-                    {m.plan_name || <span style={{color:"var(--text3)"}}>No Plan</span>}
+                    <div>{m.plan_name || <span style={{color:"var(--text3)"}}>No Plan</span>}</div>
+                    {m.diet_name && (
+                      <div style={{fontSize:11,color:"var(--teal)",marginTop:2}}>
+                        🥗 {m.diet_name}
+                      </div>
+                    )}
                   </td>
                   <td style={{
                     fontSize:12,
-                    color: (m.days_until_expiry??99)<=3 ? "var(--danger)"
-                         : (m.days_until_expiry??99)<=7 ? "var(--warn)" : "var(--text2)"
+                    color: (m.days_until_expiry??99) <= 0 ? "var(--danger)"
+                         : (m.days_until_expiry??99) <= 3 ? "var(--danger)"
+                         : (m.days_until_expiry??99) <= 7 ? "var(--warn)" : "var(--text2)"
                   }}>
                     {m.renewal_date || "—"}
                   </td>
                   <td>
-                    {m.days_until_expiry != null
-                      ? <span className={`badge ${m.days_until_expiry<=3?"badge-red":m.days_until_expiry<=7?"badge-yellow":"badge-blue"}`}>
-                          {m.days_until_expiry}d
-                        </span>
-                      : "—"}
+                    {m.days_until_expiry != null ? (() => {
+                      const d = m.days_until_expiry;
+                      if (d < 0)  return <span className="badge badge-red">Expired</span>;
+                      if (d === 0) return <span className="badge badge-red">Today</span>;
+                      if (d <= 3)  return <span className="badge badge-red">{d}d</span>;
+                      if (d <= 7)  return <span className="badge badge-yellow">{d}d</span>;
+                      return <span className="badge badge-blue">{d}d</span>;
+                    })() : "—"}
                   </td>
                   <td style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--accent)"}}>
                     ₹{Number(m.total_paid||0).toLocaleString("en-IN")}
@@ -554,6 +588,7 @@ export default function Members() {
                       </button>
                     </div>
                   </td>
+                 
                 </tr>
               ))}
             </tbody>
@@ -568,8 +603,8 @@ export default function Members() {
         </div>
       </div>
 
-      {modal==="add"      && <MemberModal plans={plans} onClose={closeModal} onSave={afterSave}/>}
-      {modal==="edit"     && selected && <MemberModal member={selected} plans={plans} onClose={closeModal} onSave={afterSave}/>}
+      {modal==="add"      && <MemberModal plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave}/>}
+      {modal==="edit"     && selected && <MemberModal member={selected} plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave}/>}
       {modal==="renew"    && selected && <RenewModal  member={selected} plans={plans} onClose={closeModal} onSave={afterSave}/>}
       {modal==="payments" && selected && <PaymentHistoryModal member={selected} onClose={closeModal} onRefresh={load}/>}
     </div>

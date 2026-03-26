@@ -7,6 +7,7 @@ const NAV = [
   { to:"/dashboard",     icon:"⬡",  label:"Dashboard" },
   { to:"/members",       icon:"◈",  label:"Members" },
   { to:"/plans",         icon:"◉",  label:"Membership Plans" },
+  { to:"/diets",         icon:"◯",  label:"Diets" },
   { to:"/staff",         icon:"◆",  label:"Staff" },
   { to:"/attendance",    icon:"✓",  label:"Attendance" },
   { to:"/equipment",     icon:"◇",  label:"Equipment" },

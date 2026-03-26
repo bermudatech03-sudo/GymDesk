@@ -4,271 +4,259 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "gym_crm.settings")
 django.setup()
 
-from datetime import timedelta
-from django.utils import timezone
 import random
+from datetime import timedelta, date, datetime, time
 from decimal import Decimal
-from django.contrib.auth import get_user_model
-from apps.members.models import MembershipPlan, Member, MemberPayment, MemberAttendance
-from apps.equipment.models import Equipment, MaintenanceLog
+
+from django.utils import timezone
+
+from apps.members.models import (
+    MembershipPlan, Member, MemberPayment,
+    MemberAttendance, InstallmentPayment,
+    DietPlan, Diet
+)
+from apps.staff.models import (
+    StaffMember, StaffShift, StaffAttendance, StaffPayment
+)
 from apps.finances.models import Income, Expenditure
-
-User = get_user_model()
-
-today = timezone.localdate()
-
-print("🚀 Seeding data...")
-
-# USERS
-if not User.objects.filter(username="admin").exists():
-    User.objects.create_superuser(username="admin", password="admin123", role="admin")
-
-User.objects.get_or_create(username="trainer1", defaults={"password": "1234", "role": "staff"})
-User.objects.get_or_create(username="trainer2", defaults={"password": "1234", "role": "staff"})
+from apps.equipment.models import Equipment, MaintenanceLog
+from apps.notifications.models import Notification
 
 
-# PLANS
-plans = []
-for name, days, price in [
-    ("Monthly", 30, 1500),
-    ("Quarterly", 90, 4000),
-    ("Yearly", 365, 12000),
-]:
-    plan, _ = MembershipPlan.objects.get_or_create(
-        name=name,
-        defaults={"duration_days": days, "price": price}
-    )
-    plans.append(plan)
+# ─────────────────────────────────────────────
+# CONFIG
+# ─────────────────────────────────────────────
+DAYS_BACK = 60
 
 
-# MEMBERS
-members = []
-for i in range(1, 21):
-    plan = random.choice(plans)
-    join_date = today - timedelta(days=random.randint(0, 60))
-
-    member, _ = Member.objects.get_or_create(
-        phone=f"90000000{i:02d}",
-        defaults={
-            "name": f"Member {i}",
-            "email": f"member{i}@gym.com",
-            "plan": plan,
-            "join_date": join_date,
-            "renewal_date": join_date + timedelta(days=plan.duration_days),
-            "status": "active"
-        }
-    )
-    members.append(member)
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+def rand_date(start, end):
+    delta = end - start
+    return start + timedelta(days=random.randint(0, delta.days))
 
 
-# PAYMENTS
+def rand_time(start_hour=6, end_hour=21):
+    return time(random.randint(start_hour, end_hour), random.choice([0, 15, 30, 45]))
 
-for m in members:
-    for _ in range(random.randint(1, 2)):
 
-        # Plan price (base)
-        base_price = Decimal(m.plan.price) if m.plan else Decimal("1500")
+# ─────────────────────────────────────────────
+# MAIN SEED FUNCTION
+# ─────────────────────────────────────────────
+def run():
+    print("Seeding data...")
 
-        # GST %
-        gst_rate = Decimal(random.choice([0, 5, 12, 18]))  # realistic GST slabs
+    today = timezone.localdate()
+    start_date = today - timedelta(days=DAYS_BACK)
 
-        # GST amount
-        gst_amount = (base_price * gst_rate) / Decimal("100")
+    # ─────────────────────────────
+    # 1. PLANS
+    # ─────────────────────────────
+    plans = [
+        ("Basic Plan", 30, 1000, "basic"),
+        ("Standard Plan", 90, 2500, "standard"),
+        ("Premium Plan", 180, 4500, "premium"),
+    ]
 
-        # Total amount (including GST)
-        total = base_price + gst_amount
-
-        # Paid amount (full or partial)
-        paid = random.choice([
-            total,
-            total / 2,
-            total * Decimal("0.75")
-        ])
-
-        paid = paid.quantize(Decimal("0.01"))
-
-        MemberPayment.objects.create(
-            member=m,
-            plan=m.plan,
-
-            invoice_number=f"INV-{random.randint(1000,9999)}",
-
-            plan_price=base_price,
-            gst_rate=gst_rate,
-            gst_amount=gst_amount.quantize(Decimal("0.01")),
-            total_with_gst=total.quantize(Decimal("0.01")),
-
-            amount_paid=paid,
-
-            paid_date=today - timedelta(days=random.randint(0, 60)),
-
-            valid_from=m.join_date,
-            valid_to=m.renewal_date,
-
-            notes="Dummy payment"
+    plan_objs = []
+    for name, days, price, code in plans:
+        p, _ = MembershipPlan.objects.get_or_create(
+            name=name,
+            defaults={
+                "duration_days": days,
+                "price": price,
+                "plans": code,
+            },
         )
+        plan_objs.append(p)
 
+    # ─────────────────────────────
+    # 2. DIET PLANS
+    # ─────────────────────────────
+    diet_plans = []
+    for i in range(3):
+        dp, _ = DietPlan.objects.get_or_create(name=f"Diet Plan {i+1}")
+        diet_plans.append(dp)
 
-# ATTENDANCE
-for m in members:
-    for d in range(60):
-        day = today - timedelta(days=d)
-        if random.random() < 0.7:
-            MemberAttendance.objects.create(
-                member=m,
-                date=day,
-                check_in=timezone.now().time()
+        for _ in range(5):
+            Diet.objects.create(
+                plan=dp,
+                time=rand_time(),
+                food=random.choice(["Rice", "Eggs", "Chicken", "Oats", "Milk"]),
+                quantity=Decimal(random.randint(1, 3)),
+                calories=random.randint(100, 400),
             )
 
+    # ─────────────────────────────
+    # 3. MEMBERS
+    # ─────────────────────────────
+    members = []
+    for i in range(25):
+        join = rand_date(start_date, today)
+        plan = random.choice(plan_objs)
 
-# EQUIPMENT
-equipments = []
-for i in range(1, 8):
-    eq = Equipment.objects.create(
-        name=f"Machine {i}",
-        category=random.choice(["cardio", "strength", "free_weights"]),
-        brand="FitBrand",
-        quantity=random.randint(1, 5),
-        condition=random.choice(["excellent", "good", "fair"]),
-        purchase_date=today - timedelta(days=random.randint(100, 800)),
+        m = Member.objects.create(
+            name=f"Member {i}",
+            phone=f"90000{i:05}",
+            plan=plan,
+            diet=random.choice(diet_plans),
+            join_date=join,
+            renewal_date=join + timedelta(days=plan.duration_days),
+        )
+        members.append(m)
+
+    # ─────────────────────────────
+    # 4. PAYMENTS + INSTALLMENTS
+    # ─────────────────────────────
+    for m in members:
+        plan = m.plan
+        if not plan:
+            continue
+
+        base = Decimal(plan.price)
+        gst_rate = Decimal("18")
+        gst_amount = (base * gst_rate) / 100
+        total = base + gst_amount
+
+        mp = MemberPayment.objects.create(
+            member=m,
+            plan=plan,
+            plan_price=base,
+            gst_rate=gst_rate,
+            gst_amount=gst_amount,
+            total_with_gst=total,
+            amount_paid=0,
+            valid_from=m.join_date,
+            valid_to=m.renewal_date,
+        )
+
+        # simulate installments
+        paid = Decimal(random.randint(0, int(total)))
+        mp.amount_paid = paid
+        mp.save()
+
+        if paid > 0:
+            InstallmentPayment.objects.create(
+                payment=mp,
+                member=m,
+                amount=paid,
+                balance_after=mp.balance,
+            )
+
+    # ─────────────────────────────
+    # 5. MEMBER ATTENDANCE
+    # ─────────────────────────────
+    for m in members:
+        for _ in range(random.randint(10, 25)):
+            d = rand_date(start_date, today)
+
+            MemberAttendance.objects.create(
+                member=m,
+                date=d,
+                check_in=rand_time(6, 10),
+                check_out=rand_time(16, 21),
+            )
+
+    # ─────────────────────────────
+    # 6. STAFF + SHIFTS
+    # ─────────────────────────────
+    shift, _ = StaffShift.objects.get_or_create(
+        name="Morning",
+        defaults={"start_time": time(6, 0), "end_time": time(14, 0)},
     )
-    equipments.append(eq)
 
+    staff_list = []
+    for i in range(8):
+        s = StaffMember.objects.create(
+            name=f"Staff {i}",
+            phone=f"80000{i:05}",
+            role=random.choice(["trainer", "receptionist"]),
+            salary=random.randint(10000, 30000),
+            shift_template=shift,
+        )
+        staff_list.append(s)
 
-# MAINTENANCE
-for eq in equipments:
-    for _ in range(random.randint(1, 3)):
+    # attendance
+    for s in staff_list:
+        used_dates = set()
+        for _ in range(20):
+            d = rand_date(start_date, today)
+            if d in used_dates:
+                continue
+            used_dates.add(d)
+            StaffAttendance.objects.create(
+                staff=s,
+                date=d,
+                check_in=time(6, random.randint(0, 30)),
+                check_out=time(14, random.randint(0, 30)),
+            )
+
+    # payments
+    for s in staff_list:
+        StaffPayment.objects.create(
+            staff=s,
+            month=today.replace(day=1),
+            amount=s.salary,
+            status="paid",
+            paid_date=today,
+        )
+
+    # ─────────────────────────────
+    # 7. EQUIPMENT
+    # ─────────────────────────────
+    equipments = []
+    for i in range(10):
+        eq = Equipment.objects.create(
+            name=f"Equipment {i}",
+            category=random.choice(["cardio", "strength"]),
+            quantity=random.randint(1, 5),
+            condition=random.choice(["good", "fair"]),
+        )
+        equipments.append(eq)
+
         MaintenanceLog.objects.create(
             equipment=eq,
-            date=today - timedelta(days=random.randint(0, 60)),
-            description="Routine maintenance",
-            cost=random.randint(500, 3000)
+            description="Routine check",
+            cost=random.randint(100, 1000),
         )
 
+    # ─────────────────────────────
+    # 8. FINANCE
+    # ─────────────────────────────
+    for _ in range(40):
+        d = rand_date(start_date, today)
 
-from decimal import Decimal
-
-gst_rates = [0, 5, 12, 18]  # realistic GST slabs
-
-for i in range(40):
-    base_amount = Decimal(random.randint(1000, 5000))
-    gst_rate = Decimal(random.choice(gst_rates))
-
-    gst_amount = (base_amount * gst_rate) / Decimal(100)
-    total_amount = base_amount + gst_amount
-
-    Income.objects.create(
-        source=random.choice([
-            "Membership Fee",
-            "Personal Training",
-            "Locker Rental",
-            "Supplement Sale"
-        ]),
-        category="membership",
-        base_amount=base_amount,
-        gst_rate=gst_rate,
-        gst_amount=gst_amount,
-        amount=total_amount,
-        date=today - timedelta(days=random.randint(0, 60)),
-        member_id=random.choice([None, random.randint(1, 20)]),  # optional link
-        invoice_number=f"INV{today.strftime('%Y%m')}{i:03d}",
-        notes="Auto generated"
-    )
-
-#expenses
-vendors = ["Local Supplier", "Amazon", "Decathlon", "Urban Fitness", "PowerLift Co"]
-
-for _ in range(30):
-    Expenditure.objects.create(
-        category=random.choice(["rent", "salary", "maintenance", "supplies"]),
-        description=random.choice([
-            "Monthly Rent",
-            "Trainer Salary",
-            "Equipment Repair",
-            "Cleaning Supplies"
-        ]),
-        amount=random.randint(2000, 15000),
-        date=today - timedelta(days=random.randint(0, 60)),
-        vendor=random.choice(vendors),
-        notes="Auto generated expense"
-    )
-
-print("✅ DONE: Dummy data created!")
-
-
-# ---------------- STAFF MEMBERS ----------------
-from apps.staff.models import StaffMember, StaffAttendance, StaffPayment
-
-staff_list = []
-
-staff_roles = ["trainer", "receptionist", "cleaner", "manager"]
-staff_shifts = ["morning", "evening", "full"]
-
-for i in range(1, 8):
-    staff, _ = StaffMember.objects.get_or_create(
-        phone=f"80000000{i:02d}",
-        defaults={
-            "name": f"Staff {i}",
-            "email": f"staff{i}@gym.com",
-            "role": random.choice(staff_roles),
-            "shift": random.choice(staff_shifts),
-            "salary": random.randint(10000, 30000),
-            "join_date": today - timedelta(days=random.randint(30, 200)),
-            "status": "active"
-        }
-    )
-    staff_list.append(staff)
-
-
-# ---------------- STAFF ATTENDANCE (60 DAYS) ----------------
-for staff in staff_list:
-    for d in range(60):
-        day = today - timedelta(days=d)
-
-        status = random.choices(
-            ["present", "absent", "half", "leave"],
-            weights=[70, 10, 10, 10]
-        )[0]
-
-        check_in = None
-        check_out = None
-
-        if status in ["present", "half"]:
-            check_in = timezone.now().time()
-            check_out = timezone.now().time()
-
-        StaffAttendance.objects.get_or_create(
-            staff=staff,
-            date=day,
-            defaults={
-                "status": status,
-                "check_in": check_in,
-                "check_out": check_out,
-                "notes": ""
-            }
+        Income.objects.create(
+            source="Membership",
+            amount=random.randint(500, 3000),
+            base_amount=1000,
+            gst_rate=18,
+            gst_amount=180,
+            date=d,
         )
 
-
-# ---------------- STAFF PAYMENTS (LAST 2 MONTHS) ----------------
-for staff in staff_list:
-    for month_offset in range(2):  # last 2 months
-        month_date = (today.replace(day=1) - timedelta(days=30 * month_offset)).replace(day=1)
-
-        status = random.choice(["paid", "pending", "partial"])
-        paid_date = None
-
-        if status == "paid":
-            paid_date = month_date + timedelta(days=random.randint(1, 10))
-
-        StaffPayment.objects.get_or_create(
-            staff=staff,
-            month=month_date,
-            defaults={
-                "amount": staff.salary,
-                "paid_date": paid_date,
-                "status": status,
-                "notes": ""
-            }
+        Expenditure.objects.create(
+            category=random.choice(["salary", "maintenance", "rent"]),
+            description="Expense",
+            amount=random.randint(500, 5000),
+            date=d,
         )
 
-print("✅ STAFF DATA CREATED!")
+    # ─────────────────────────────
+    # 9. NOTIFICATIONS
+    # ─────────────────────────────
+    for m in members[:10]:
+        Notification.objects.create(
+            recipient_name=m.name,
+            recipient_phone=m.phone,
+            message="Your membership is expiring soon",
+            trigger_type="renewal_remind",
+            status=random.choice(["sent", "pending"]),
+        )
+
+    print("✅ Seeding complete!")
+
+
+if __name__ == "__main__":
+    run()

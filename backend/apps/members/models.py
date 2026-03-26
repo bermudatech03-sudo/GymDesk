@@ -138,7 +138,7 @@ class MemberPayment(models.Model):
 class MemberAttendance(models.Model):
     member     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="attendance")
     date       = models.DateField(default=timezone.localdate)
-    check_in   = models.TimeField(default=timezone.now)
+    check_in   = models.TimeField(null=True, blank=True)
     check_out  = models.TimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
  

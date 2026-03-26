@@ -16,3 +16,76 @@
 @media (max-width: 900px) {
   .attendance-grid { grid-template-columns: 1fr; }
 }
+
+/* ── ADD these to your existing Attendance.css (or global badge styles) ── */
+
+/* These may already exist for some — add only the missing ones */
+.badge-orange {
+  background: rgba(249, 115, 22, .15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, .3);
+}
+
+.badge-blue {
+  background: rgba(59, 130, 246, .15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, .3);
+}
+
+.badge-gray {
+  background: rgba(107, 114, 128, .15);
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, .3);
+}
+
+/* attendance-table-header already in your CSS — just ensure flex gap works */
+.attendance-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* ── ADD these to your existing Attendance.css (or global badge styles) ── */
+
+/* These may already exist for some — add only the missing ones */
+.badge-orange {
+  background: rgba(249, 115, 22, .15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, .3);
+}
+
+.badge-blue {
+  background: rgba(59, 130, 246, .15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, .3);
+}
+
+.badge-gray {
+  background: rgba(107, 114, 128, .15);
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, .3);
+}
+
+/* attendance-table-header already in your CSS — just ensure flex gap works */
+.attendance-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge-purple {
+  background: rgba(168, 85, 247, .15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, .3);
+}

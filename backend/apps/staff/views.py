@@ -1,14 +1,26 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status, serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 from django.utils import timezone
-from .models import StaffMember, StaffAttendance, StaffPayment
-from .serializers import StaffSerializer, AttendanceSerializer, PaymentSerializer
+from django.conf import settings as djconf
+from django.db.models import Sum, Q
+from decimal import Decimal
+from datetime import datetime, timedelta, time
+import datetime as dt
+import calendar
 
+from .models import StaffMember, StaffShift, StaffAttendance, StaffPayment
+from .serializers import (
+    StaffSerializer, AttendanceSerializer, PaymentSerializer, StaffShiftSerializer
+)
+
+
+# ─── Salary → Finance helper ─────────────────────────────────────────────────
 
 def _record_expense(staff, amount, month):
     from apps.finances.models import Expenditure
-    import calendar
     month_name = calendar.month_name[month.month]
     Expenditure.objects.create(
         category="salary",
@@ -21,20 +33,177 @@ def _record_expense(staff, amount, month):
 
 
 def _delete_expense(staff, month):
-    """Remove the Finance Expenditure record when salary is marked unpaid."""
     from apps.finances.models import Expenditure
-    import calendar
     month_name = calendar.month_name[month.month]
     label = f"Salary — {staff.name} ({month_name} {month.year})"
     Expenditure.objects.filter(
-        category="salary",
-        vendor=staff.name,
-        description=label,
+        category="salary", vendor=staff.name, description=label,
     ).delete()
 
 
+# ─── Auto-absent helpers ─────────────────────────────────────────────────────
+
+def _auto_mark_absent_staff():
+    """
+    For every active staff member, check yesterday.
+    If no attendance record exists AND yesterday was a working day per their
+    shift template, AND the shift end+1hr has passed → mark auto_absent.
+    Called lazily on list/calendar fetches.
+    """
+    yesterday = timezone.localdate() - timedelta(days=1)
+    now_time  = timezone.localtime(timezone.now()).time()   # IST local time
+
+    for staff in StaffMember.objects.filter(status="active"):
+        # Skip if record already exists
+        if StaffAttendance.objects.filter(staff=staff, date=yesterday).exists():
+            continue
+
+        shift = staff.get_shift_template()
+        if shift:
+            if not shift.is_working_day(yesterday):
+                continue
+            # Only mark after shift_end + 1 hour today
+            cutoff = (datetime.combine(dt.date.today(), shift.end_time) + timedelta(hours=1)).time()
+            if now_time < cutoff:
+                continue
+        # No shift template → always mark absent for previous day
+        StaffAttendance.objects.get_or_create(
+            staff=staff, date=yesterday,
+            defaults={"status": "auto_absent", "notes": "Auto-marked absent"},
+        )
+
+
+def _auto_mark_absent_members():
+    """
+    For every active/expired member, if they have no attendance for yesterday
+    → create absent record. (Gym is open every day including Sunday.)
+    """
+    from apps.members.models import Member, MemberAttendance
+    yesterday = timezone.localdate() - timedelta(days=1)
+    for member in Member.objects.filter(status__in=["active", "expired"]):
+        MemberAttendance.objects.get_or_create(
+            member=member, date=yesterday,
+            defaults={"status": "absent"},
+        )
+
+
+# ─── Calendar builder ────────────────────────────────────────────────────────
+
+def _build_staff_calendar(staff, year, month_num):
+    """
+    Returns a list of day dicts for the given month for one staff member.
+    Each day: { date, weekday, is_working_day, status, check_in, check_out,
+                worked_minutes, late_minutes, overtime_minutes, shift_start, shift_end }
+    Plus summary counts.
+    """
+    shift       = staff.get_shift_template()
+    _, num_days = calendar.monthrange(year, month_num)
+    records     = {
+        a.date: a
+        for a in StaffAttendance.objects.filter(
+            staff=staff, date__year=year, date__month=month_num
+        )
+    }
+
+    days = []
+    counts = {"present": 0, "absent": 0, "late": 0, "overtime": 0,
+              "half": 0, "leave": 0, "auto_absent": 0, "working_days": 0}
+
+    for day_num in range(1, num_days + 1):
+        d          = dt.date(year, month_num, day_num)
+        is_future  = d > timezone.localdate()
+        is_working = shift.is_working_day(d) if shift else True
+        rec        = records.get(d)
+
+        if is_working and not is_future:
+            counts["working_days"] += 1
+
+        day_data = {
+            "date":             str(d),
+            "day_num":          day_num,
+            "weekday":          d.strftime("%a"),
+            "is_working_day":   is_working,
+            "is_future":        is_future,
+            "status":           rec.status    if rec else (None if is_future else "absent"),
+            "check_in":         str(rec.check_in)  if rec and rec.check_in  else None,
+            "check_out":        str(rec.check_out) if rec and rec.check_out else None,
+            "worked_minutes":   rec.worked_minutes   if rec else 0,
+            "late_minutes":     rec.late_minutes     if rec else 0,
+            "overtime_minutes": rec.overtime_minutes if rec else 0,
+            "shift_start":      str(shift.start_time) if shift else None,
+            "shift_end":        str(shift.end_time)   if shift else None,
+            "shift_duration":   shift.shift_duration_minutes() if shift else None,
+            "attendance_id":    rec.id if rec else None,
+        }
+        days.append(day_data)
+
+        if not is_future and rec:
+            st = rec.status
+            if st in counts:
+                counts[st] += 1
+
+    return days, counts
+
+
+def _build_member_calendar(member, year, month_num):
+    """
+    Returns calendar days for a member. All 7 days are working days (gym open daily).
+    Status: present / absent only.
+    """
+    from apps.members.models import MemberAttendance
+
+    _, num_days = calendar.monthrange(year, month_num)
+    records = {
+        a.date: a
+        for a in MemberAttendance.objects.filter(
+            member=member, date__year=year, date__month=month_num
+        )
+    }
+
+    days   = []
+    counts = {"present": 0, "absent": 0}
+
+    for day_num in range(1, num_days + 1):
+        d         = dt.date(year, month_num, day_num)
+        is_future = d > timezone.localdate()
+        rec       = records.get(d)
+
+        status = None
+        if not is_future:
+            status = "present" if (rec and rec.check_in) else "absent"
+            counts[status] += 1
+
+        days.append({
+            "date":          str(d),
+            "day_num":       day_num,
+            "weekday":       d.strftime("%a"),
+            "is_future":     is_future,
+            "status":        status,
+            "check_in":      str(rec.check_in)  if rec and rec.check_in  else None,
+            "check_out":     str(rec.check_out) if rec and rec.check_out else None,
+            "attendance_id": rec.id if rec else None,
+        })
+
+    return days, counts
+
+
+# ─── ViewSets ────────────────────────────────────────────────────────────────
+
+class StaffShiftViewSet(viewsets.ModelViewSet):
+    """CRUD for shift templates."""
+    queryset         = StaffShift.objects.prefetch_related("staff_members").all()
+    serializer_class = StaffShiftSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        shift = self.get_object()
+        # Unlink staff before deleting
+        StaffMember.objects.filter(shift_template=shift).update(shift_template=None)
+        shift.delete()
+        return Response({"detail": "Shift deleted."}, status=204)
+
+
 class StaffViewSet(viewsets.ModelViewSet):
-    queryset = StaffMember.objects.all()
+    queryset         = StaffMember.objects.select_related("shift_template").all()
     serializer_class = StaffSerializer
     search_fields    = ["name", "phone", "email"]
     filterset_fields = ["role", "shift", "status"]
@@ -49,11 +218,10 @@ class StaffViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="generate-payments")
     def generate_payments(self, request):
-        import datetime
-        year  = int(request.data.get("year",  timezone.localdate().year))
-        month = int(request.data.get("month", timezone.localdate().month))
-        month_date = datetime.date(year, month, 1)
-        created = 0
+        year       = int(request.data.get("year",  timezone.localdate().year))
+        month      = int(request.data.get("month", timezone.localdate().month))
+        month_date = dt.date(year, month, 1)
+        created    = 0
         for staff in StaffMember.objects.filter(status="active", salary__gt=0):
             _, made = StaffPayment.objects.get_or_create(
                 staff=staff, month=month_date,
@@ -63,9 +231,93 @@ class StaffViewSet(viewsets.ModelViewSet):
                 created += 1
         return Response({"created": created, "month": str(month_date)})
 
+    # ── Per-staff calendar ────────────────────────────────────────────────────
+
+    @action(detail=True, methods=["get"], url_path="calendar")
+    def calendar_view(self, request, pk=None):
+        """
+        GET /staff/members/{id}/calendar/?year=2026&month=3
+        Returns full month calendar for this staff member.
+        """
+        _auto_mark_absent_staff()
+        staff     = self.get_object()
+        today     = timezone.localdate()
+        year      = int(request.query_params.get("year",  today.year))
+        month_num = int(request.query_params.get("month", today.month))
+
+        days, counts = _build_staff_calendar(staff, year, month_num)
+        shift = staff.get_shift_template()
+
+        return Response({
+            "staff_id":    staff.id,
+            "staff_name":  staff.name,
+            "role":        staff.role,
+            "year":        year,
+            "month":       month_num,
+            "month_name":  calendar.month_name[month_num],
+            "shift": {
+                "id":          shift.id          if shift else None,
+                "name":        shift.name        if shift else None,
+                "start_time":  str(shift.start_time) if shift else None,
+                "end_time":    str(shift.end_time)   if shift else None,
+                "working_days": shift.working_day_names if shift else [],
+                "late_grace":  shift.late_grace_minutes if shift else 0,
+            },
+            "days":   days,
+            "counts": counts,
+        })
+
+    # ── Admin: mark attendance for a specific day ─────────────────────────────
+
+    @action(detail=True, methods=["post"], url_path="mark-day")
+    def mark_day(self, request, pk=None):
+        """
+        POST /staff/members/{id}/mark-day/
+        Body: { date, status, check_in (opt), check_out (opt), notes (opt) }
+        Creates or updates the attendance record for that day.
+        """
+        staff  = self.get_object()
+        date_s = request.data.get("date")
+        if not date_s:
+            return Response({"detail": "date is required."}, status=400)
+
+        try:
+            date = dt.date.fromisoformat(date_s)
+        except ValueError:
+            return Response({"detail": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+
+        status_val = request.data.get("status", "present")
+        notes      = request.data.get("notes", "")
+
+        def _parse_time(val):
+            """'HH:MM' or 'HH:MM:SS' string -> datetime.time, or None."""
+            if not val:
+                return None
+            if isinstance(val, time):
+                return val
+            try:
+                parts = [int(x) for x in str(val).split(":")]
+                return time(*parts[:3])
+            except (ValueError, TypeError):
+                return None
+
+        check_in  = _parse_time(request.data.get("check_in"))
+        check_out = _parse_time(request.data.get("check_out"))
+
+        rec, _ = StaffAttendance.objects.update_or_create(
+            staff=staff, date=date,
+            defaults={
+                "status":    status_val,
+                "check_in":  check_in,
+                "check_out": check_out,
+                "notes":     notes,
+            },
+        )
+        return Response(AttendanceSerializer(rec).data)
+
 
 class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = StaffAttendance.objects.select_related("staff").all()
+    queryset         = StaffAttendance.objects.select_related("staff").all()
     serializer_class = AttendanceSerializer
     filterset_fields = ["staff", "date", "status"]
     ordering_fields  = ["date"]
@@ -73,29 +325,78 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def today(self, request):
         today = timezone.localdate()
-        qs = StaffAttendance.objects.filter(date=today).select_related("staff")
+        qs    = StaffAttendance.objects.filter(date=today).select_related("staff")
         return Response(AttendanceSerializer(qs, many=True).data)
 
     @action(detail=False, methods=["post"])
     def bulk_mark(self, request):
         records = request.data.get("records", [])
         created = 0
+
+        def _t(val):
+            if not val: return None
+            if isinstance(val, time): return val
+            try:
+                parts = [int(x) for x in str(val).split(":")]
+                return time(*parts[:3])
+            except (ValueError, TypeError):
+                return None
+
         for r in records:
             StaffAttendance.objects.update_or_create(
                 staff_id=r["staff"],
                 date=r.get("date", timezone.localdate()),
                 defaults={
                     "status":    r.get("status", "present"),
-                    "check_in":  r.get("check_in"),
-                    "check_out": r.get("check_out"),
-                }
+                    "check_in":  _t(r.get("check_in")),
+                    "check_out": _t(r.get("check_out")),
+                },
             )
             created += 1
         return Response({"marked": created})
 
+    @action(detail=False, methods=["post"], url_path="auto-absent")
+    def auto_absent(self, request):
+        """Manually trigger auto-absent logic (also called lazily on calendar fetch)."""
+        _auto_mark_absent_staff()
+        _auto_mark_absent_members()
+        return Response({"detail": "Auto-absent applied."})
+
+
+# ── Member calendar endpoint ──────────────────────────────────────────────────
+
+class MemberCalendarView(APIView):
+    """
+    GET /members/{id}/calendar/?year=2026&month=3
+    Lives here because it needs the member calendar builder.
+    Wire into members/urls.py as needed.
+    """
+    def get(self, request, pk):
+        from apps.members.models import Member
+        _auto_mark_absent_members()
+        try:
+            member = Member.objects.get(pk=pk)
+        except Member.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
+
+        today     = timezone.localdate()
+        year      = int(request.query_params.get("year",  today.year))
+        month_num = int(request.query_params.get("month", today.month))
+
+        days, counts = _build_member_calendar(member, year, month_num)
+        return Response({
+            "member_id":   member.id,
+            "member_name": member.name,
+            "year":        year,
+            "month":       month_num,
+            "month_name":  calendar.month_name[month_num],
+            "days":        days,
+            "counts":      counts,
+        })
+
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = StaffPayment.objects.select_related("staff").all()
+    queryset         = StaffPayment.objects.select_related("staff").all()
     serializer_class = PaymentSerializer
     filterset_fields = ["staff", "status", "month"]
 

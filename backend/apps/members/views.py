@@ -484,40 +484,83 @@ class KioskMarkAttendanceView(APIView):
         now   = timezone.now()
         today = timezone.localdate()
 
+        # ── KEY FIX: convert UTC→IST before extracting time ──
+        local_now  = timezone.localtime(now)
+        local_time = local_now.time()           # IST time e.g. 09:17, not 03:47
+
         if ptype == "member":
             try:
                 member   = Member.objects.get(pk=pid)
                 existing = MemberAttendance.objects.filter(member=member, date=today).first()
                 if existing and not existing.check_out:
-                    existing.check_out = now.time(); existing.save(); act = "check_out"
+                    existing.check_out = local_time
+                    existing.save()
+                    act = "check_out"
                 elif existing:
-                    MemberAttendance.objects.create(member=member, date=today, check_in=now.time())
+                    MemberAttendance.objects.create(
+                        member=member, date=today, check_in=local_time
+                    )
                     act = "check_in"
                 else:
-                    MemberAttendance.objects.create(member=member, date=today, check_in=now.time())
+                    MemberAttendance.objects.create(
+                        member=member, date=today, check_in=local_time
+                    )
                     act = "check_in"
-                return Response({"action":act,"name":member.name,
-                    "time":now.strftime("%I:%M %p"),"date":str(today),"type":"member"})
+                return Response({
+                    "action": act, "name": member.name,
+                    "time":   local_now.strftime("%I:%M %p"),   # display IST
+                    "date":   str(today), "type": "member",
+                })
             except Member.DoesNotExist:
-                return Response({"detail":"Member not found."}, status=404)
+                return Response({"detail": "Member not found."}, status=404)
+
+        # ── PATCH: apps/members/views.py — KioskMarkAttendanceView ──────────────────
+# Replace the entire `elif ptype == "staff":` block with this version.
+# Change: block re-login if staff has already checked out today.
+# ─────────────────────────────────────────────────────────────────────────────
 
         elif ptype == "staff":
             from apps.staff.models import StaffMember, StaffAttendance
             try:
                 staff    = StaffMember.objects.get(pk=pid)
                 existing = StaffAttendance.objects.filter(staff=staff, date=today).first()
-                if existing and not existing.check_out:
-                    existing.check_out = now.time(); existing.save(); act = "check_out"
-                elif existing:
-                    existing.check_in = now.time(); existing.check_out = None
-                    existing.save(); act = "check_in"
-                else:
-                    StaffAttendance.objects.create(staff=staff, date=today,
-                        check_in=now.time(), status="present")
-                    act = "check_in"
-                return Response({"action":act,"name":staff.name,
-                    "time":now.strftime("%I:%M %p"),"date":str(today),"type":"staff"})
-            except StaffMember.DoesNotExist:
-                return Response({"detail":"Staff not found."}, status=404)
 
-        return Response({"detail":"Invalid type."}, status=400)
+                if existing and existing.check_out:
+                    # ── Already checked out — block re-entry ──────────────
+                    return Response({
+                        "action":  "already_out",
+                        "name":    staff.name,
+                        "message": (
+                            f"Already checked out at "
+                            f"{timezone.localtime(datetime.combine(today, existing.check_out).replace(tzinfo=timezone.utc)).strftime('%I:%M %p') if False else existing.check_out.strftime('%I:%M %p')}."
+                            f" No re-entry allowed for today."
+                        ),
+                        "time":  existing.check_out.strftime("%I:%M %p"),
+                        "date":  str(today),
+                        "type":  "staff",
+                    }, status=200)
+
+                elif existing and not existing.check_out:
+                    # ── Checked in, not yet out → mark check-out ─────────
+                    existing.check_out = local_time
+                    existing.save()
+                    act = "check_out"
+
+                else:
+                    # ── No record yet → first check-in ───────────────────
+                    StaffAttendance.objects.create(
+                        staff=staff, date=today,
+                        check_in=local_time, status="present"
+                    )
+                    act = "check_in"
+
+                return Response({
+                    "action": act,
+                    "name":   staff.name,
+                    "time":   local_now.strftime("%I:%M %p"),
+                    "date":   str(today),
+                    "type":   "staff",
+                })
+
+            except StaffMember.DoesNotExist:
+                return Response({"detail": "Staff not found."}, status=404)

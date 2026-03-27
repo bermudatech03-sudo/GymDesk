@@ -7,11 +7,11 @@ import api from "../../api/axios";
 const UNITS = ["g", "kg", "ml", "l", "cup", "tbsp", "tsp", "piece"];
 
 const emptyItem = () => ({ food: "", time: "", quantity: "", unit: "g", calories: "", notes: "", });
-
 const CreatePlanModal = ({ onClose, onSave, plan }) => {
     const isEdit = !!plan;
 
     const [planName, setPlanName] = useState(plan?.name ?? "");
+    const [foodType, setFoodType] = useState(plan?.foodType || "veg");
     const [items, setItems] = useState(
         plan?.items?.length
             ? plan.items.map(i => ({
@@ -45,11 +45,10 @@ const CreatePlanModal = ({ onClose, onSave, plan }) => {
         e.preventDefault();
         try {
             if (isEdit) {
-                await api.put(`/members/diet-plans/${plan.id}/`, { name: planName, items });
-                console.log("Items:", items);
+                await api.put(`/members/diet-plans/${plan.id}/`, { name: planName, foodType: foodType || "veg", items });
                 toast.success("Plan updated!");
             } else {
-                await api.post("/members/diet-plans/", { name: planName, items });
+                await api.post("/members/diet-plans/", { name: planName, foodType: foodType || "veg", items });
                 toast.success("Plan created!");
             }
             onSave();
@@ -76,6 +75,15 @@ const CreatePlanModal = ({ onClose, onSave, plan }) => {
                     />
                 </div>
 
+                <div>
+                    <label className="form-label">Food Types</label>
+                    <select className="form-input" value={foodType} onChange={e => setFoodType(e.target.value)}>
+                        <option value="veg">Vegetarian</option>
+                        <option value="nonveg">Non-Vegetarian</option>
+                        <option value="vegan">Vegan</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
                 <p className="modal-meta">
                     <span>{items.length}</span> items &nbsp;·&nbsp; <span>{totalCalories} kcal</span> total
                 </p>

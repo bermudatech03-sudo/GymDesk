@@ -9,10 +9,11 @@ import Staff from "./pages/Staff/Staff";
 import Equipment from "./pages/Equipment/Equipment";
 import Finances from "./pages/Finances/Finances";
 import Notifications from "./pages/Notifications/Notifications";
-import Plans from "./pages/Plans/Plans";
+import Plans from "./pages/Plans/plans";
 import Attendance from "./pages/Attendance/Attendance";
 import Settings from "./pages/Settings/Settings";
 import Diets from "./pages/Diet/DietPage";
+import TrainerAssignments from "./pages/TrainerAssignments/TrainerAssignments";
 function Protected({ children }) {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" replace />;
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="staff/*" element={<Staff />} />
             <Route path="equipment/*" element={<Equipment />} />
             <Route path="finances/*" element={<Finances />} />
+            <Route path="trainer-assignments" element={<TrainerAssignments />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="settings" element={<Settings />} />

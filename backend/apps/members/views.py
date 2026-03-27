@@ -8,10 +8,10 @@ from django.conf import settings as djconf
 from django.db.models import Sum, Q
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
-from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment
+from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment
 from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, PlanSerializer, MemberPaymentSerializer,
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
-    InstallmentPaymentSerializer)
+    InstallmentPaymentSerializer, TrainerAssignmentSerializer)
 from apps.notifications.utils import send_notification
 
 
@@ -176,7 +176,7 @@ class MemberViewSet(viewsets.ModelViewSet):
     queryset         = Member.objects.select_related("plan").all()
     serializer_class = MemberSerializer
     search_fields    = ["name","phone","email"]
-    ordering_fields  = ["name","join_date","renewal_date","status"]
+    ordering_fields  = ["name","join_date","renewal_date","status","personal_trainer"]
 
     def get_queryset(self):
         # Auto-expire members whose renewal date has passed
@@ -196,6 +196,10 @@ class MemberViewSet(viewsets.ModelViewSet):
         # plan filter (by plan id)
         if params.get("plan"):
             qs = qs.filter(plan_id=params["plan"])
+
+        # plan filter (by personal trainer requirement)
+        if params.get("personal_trainer") == "true":
+            qs = qs.filter(personal_trainer=True)
 
         # search
         if params.get("search"):
@@ -251,14 +255,20 @@ class MemberViewSet(viewsets.ModelViewSet):
             email=d.get("email",""), gender=d.get("gender",""),
             address=d.get("address",""), plan=plan, diet=diet,
             join_date=join, renewal_date=renew,
-            status=d.get("status","active"), notes=d.get("notes",""),
+            status=d.get("status","active"), notes=d.get("notes",""),personal_trainer=d.get("personal_trainer", False)
         )
 
         amount_paid = Decimal(str(d.get("amount_paid", 0)))
         bill_data   = None
 
         if plan:
-            base, gst_amt, total, rate = _calc_gst(plan.price)
+            pt_fee = Decimal("0")
+            if d.get("personal_trainer"):
+                if plan.plans == "standard":
+                    pt_fee = Decimal("500")
+                elif plan.plans == "premium":
+                    pt_fee = Decimal("1000")
+            base, gst_amt, total, rate = _calc_gst(plan.price + pt_fee)
             inv_no = _invoice_number(member.id, join)
 
             payment = MemberPayment.objects.create(
@@ -536,7 +546,7 @@ class KioskMarkAttendanceView(APIView):
                         "name":    staff.name,
                         "message": (
                             f"Already checked out at "
-                            f"{timezone.localtime(datetime.combine(today, existing.check_out).replace(tzinfo=timezone.utc)).strftime('%I:%M %p') if False else existing.check_out.strftime('%I:%M %p')}."
+                            f"{existing.check_out.strftime('%I:%M %p')}."
                             f" No re-entry allowed for today."
                         ),
                         "time":  existing.check_out.strftime("%I:%M %p"),
@@ -586,17 +596,19 @@ class DietPlanViewSet(viewsets.ModelViewSet):
             )
 
     def create(self, request, *args, **kwargs):
-        plan = DietPlan.objects.create(name=request.data.get("name", "Unnamed Plan"))
+        plan = DietPlan.objects.create(
+            name=request.data.get("name", "Unnamed Plan"),
+            foodType=request.data.get("foodType", "veg"),
+        )
         self._save_items(plan, request.data.get("items", []))
         return Response(DietPlanSerializer(plan).data, status=201)
 
     def update(self, request, *args, **kwargs):
-        print("Updating Diet Plan with data:", request.data.get("items", []))
         plan = self.get_object()
         plan.name = request.data.get("name", plan.name)
+        plan.foodType = request.data.get("foodType", plan.foodType)
         plan.save()
         plan.items.all().delete()
-        print("Updating Diet Plan with data:", request.data.get("items", []))
         self._save_items(plan, request.data.get("items", []))
         return Response(DietPlanSerializer(plan).data)
 
@@ -604,3 +616,110 @@ class DietPlanViewSet(viewsets.ModelViewSet):
 class DietViewSet(viewsets.ModelViewSet):
     queryset = Diet.objects.all()
     serializer_class = DietSerializer
+
+
+class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
+    queryset         = TrainerAssignment.objects.select_related("member", "trainer", "plan").all()
+    serializer_class = TrainerAssignmentSerializer
+
+    def get_queryset(self):
+        qs     = TrainerAssignment.objects.select_related("member", "trainer", "plan").all()
+        params = self.request.query_params
+        if params.get("member"):
+            qs = qs.filter(member_id=params["member"])
+        if params.get("trainer"):
+            qs = qs.filter(trainer_id=params["trainer"])
+        if params.get("plan"):
+            qs = qs.filter(plan_id=params["plan"])
+        return qs
+
+    @staticmethod
+    def _check_plan_eligibility(member):
+        """Returns (ok, error_msg). A member needs standard/premium plan with personal_trainer enabled, and member must have opted in."""
+        if not member.plan:
+            return False, "Member has no membership plan. Assign a Standard or Premium plan first."
+        if member.plan.plans not in ("standard", "premium"):
+            return False, (
+                f"Personal trainer is only available for Standard and Premium plans. "
+                f"This member is on the '{member.plan.get_plans_display()}' plan."
+            )
+        if not member.plan.personal_trainer:
+            return False, (
+                f"The plan '{member.plan.name}' does not include Personal Trainer. "
+                f"Enable Personal Trainer on this plan first."
+            )
+        if not member.personal_trainer:
+            return False, (
+                f"This member has not opted for Personal Trainer. "
+                f"Enable the Personal Trainer option on the member's profile first."
+            )
+        return True, None
+
+    def create(self, request, *args, **kwargs):
+        from apps.staff.models import StaffMember
+        from django.core.exceptions import ValidationError as DjValidationError
+        data = request.data
+
+        try:
+            member  = Member.objects.select_related("plan").get(pk=data.get("member"))
+            trainer = StaffMember.objects.get(pk=data.get("trainer"), role="trainer")
+        except Member.DoesNotExist:
+            return Response({"detail": "Member not found."}, status=400)
+        except StaffMember.DoesNotExist:
+            return Response({"detail": "Trainer not found or staff member is not a Trainer."}, status=400)
+
+        ok, err = self._check_plan_eligibility(member)
+        if not ok:
+            return Response({"detail": err}, status=400)
+
+        plan = None
+        if data.get("plan"):
+            plan = MembershipPlan.objects.filter(pk=data["plan"]).first()
+
+        assignment = TrainerAssignment(
+            member       = member,
+            trainer      = trainer,
+            plan         = plan,
+            startingtime = data.get("startingtime"),
+            endingtime   = data.get("endingtime"),
+            working_days = data.get("working_days", "0,1,2,3,4,5,6"),
+        )
+        try:
+            assignment.full_clean()
+        except DjValidationError as exc:
+            return Response({"detail": "; ".join(exc.messages)}, status=400)
+
+        assignment.save()
+        return Response(TrainerAssignmentSerializer(assignment).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        from apps.staff.models import StaffMember
+        from django.core.exceptions import ValidationError as DjValidationError
+        assignment = self.get_object()
+        data       = request.data
+
+        if data.get("trainer"):
+            try:
+                assignment.trainer = StaffMember.objects.get(pk=data["trainer"], role="trainer")
+            except StaffMember.DoesNotExist:
+                return Response({"detail": "Trainer not found or staff member is not a Trainer."}, status=400)
+
+        if data.get("plan"):
+            assignment.plan = MembershipPlan.objects.filter(pk=data["plan"]).first()
+        elif "plan" in data and data["plan"] is None:
+            assignment.plan = None
+
+        if data.get("startingtime"):
+            assignment.startingtime = data["startingtime"]
+        if data.get("endingtime"):
+            assignment.endingtime = data["endingtime"]
+        if data.get("working_days"):
+            assignment.working_days = data["working_days"]
+
+        try:
+            assignment.full_clean()
+        except DjValidationError as exc:
+            return Response({"detail": "; ".join(exc.messages)}, status=400)
+
+        assignment.save()
+        return Response(TrainerAssignmentSerializer(assignment).data)

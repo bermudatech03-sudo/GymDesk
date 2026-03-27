@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
@@ -12,21 +13,25 @@ class MembershipPlan(models.Model):
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     plans         = models.CharField(max_length=10, choices=PLAN, default="basic")
+    personal_trainer = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.name} ({self.duration_days}d — ₹{self.price}) {self.plans} "
 
 class Member(models.Model):
-    GENDER = [("M","Male"),("F","Female"),("O","Other")]
+    GENDER = [("Male","Male"),("Female","Female"),("Other","Other")]
     STATUS = [("active","Active"),("expired","Expired"),("cancelled","Cancelled"),("paused","Paused")]
+    FOODTYPE = [("veg","Vegetarian"),("nonveg","Non-Vegetarian"),("vegan","Vegan"),("other","Other")]
 
     name         = models.CharField(max_length=150)
     phone        = models.CharField(max_length=15, unique=True)
     email        = models.EmailField(blank=True)
+    age          = models.PositiveIntegerField(default=18)
     dob          = models.DateField(null=True, blank=True)
-    gender       = models.CharField(max_length=1, choices=GENDER, blank=True)
+    gender       = models.CharField(max_length=10, choices=GENDER, blank=True)
     address      = models.TextField(blank=True)
     photo_url    = models.URLField(blank=True)
+    foodType     = models.CharField(max_length=10, choices=FOODTYPE, default="veg")
     plan         = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
     diet         = models.ForeignKey('DietPlan', on_delete=models.SET_NULL, null=True, blank=True)
     join_date    = models.DateField(default=timezone.localdate)
@@ -35,6 +40,7 @@ class Member(models.Model):
     notes        = models.TextField(blank=True)
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
+    personal_trainer = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]
@@ -69,6 +75,16 @@ class Member(models.Model):
 
     def display_id(self):
         return f"M{self.id:04d}"
+
+    def change_amount(self):
+        if not self.plan:
+            return Decimal("0")
+        if self.personal_trainer:
+            if self.plan.plans == "standard":
+                return self.plan.price + Decimal("500")
+            elif self.plan.plans == "premium":
+                return self.plan.price + Decimal("1000")
+        return self.plan.price
 
 class MemberPayment(models.Model):
     """
@@ -152,8 +168,10 @@ class MemberAttendance(models.Model):
         return f"{self.member.name} — {self.date}"
     
 class DietPlan(models.Model):
+    FOODTYPE = [("veg","Vegetarian"),("nonveg","Non-Vegetarian"),("vegan","Vegan"),("other","Other")]
     name       = models.CharField(max_length=100, default="Unnamed Plan")
     created_at = models.DateTimeField(auto_now_add=True)
+    foodType = models.CharField(max_length=10, choices=FOODTYPE, default="veg")
 
     def __str__(self):
         return self.name
@@ -170,6 +188,7 @@ class Diet(models.Model):
         ("tsp",   "Teaspoon"),
         ("piece", "Piece"),
     ]
+    
 
     plan     = models.ForeignKey(DietPlan, on_delete=models.CASCADE, related_name="items")
     time     = models.TimeField()
@@ -199,7 +218,7 @@ class InstallmentPayment(models.Model):
         ("renewal",    "Renewal"),
         ("balance",    "Balance Payment"),
     ]
- 
+
     payment        = models.ForeignKey(MemberPayment, on_delete=models.CASCADE,
                                        related_name="installment_payments")
     member         = models.ForeignKey(Member, on_delete=models.CASCADE,
@@ -217,3 +236,34 @@ class InstallmentPayment(models.Model):
  
     def __str__(self):
         return f"{self.member.name} — ₹{self.amount} on {self.paid_date}"
+    
+
+class TrainerAssignment(models.Model):
+    member                     = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="trainer_assignments")
+    trainer                    = models.ForeignKey('staff.StaffMember', on_delete=models.CASCADE, limit_choices_to={"role": "trainer"}, related_name="member_assignments")
+    plan                       = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_at                = models.DateTimeField(auto_now_add=True)
+    startingtime               = models.TimeField()
+    endingtime                 = models.TimeField()
+    working_days               = models.CharField(max_length=20, default="0,1,2,3,4,5,6")
+    class Meta:
+        unique_together = ["member", "trainer"]
+        ordering = ["-assigned_at"]
+    def __str__(self):
+        return f"{self.member.name} assigned to {self.trainer.name} for {self.plan.name if self.plan else 'No Plan'} on {self.assigned_at.date()} from {self.startingtime} to {self.endingtime}"
+    
+    def clean(self):
+        if self.startingtime >= self.endingtime:
+            raise ValidationError("Start time must be before end time")
+        
+    @property
+    def working_days_list(self):
+        """Returns list of ints e.g. [0,1,2,3,4]"""
+        if not self.working_days:
+            return list(range(7))
+        return [int(d) for d in self.working_days.split(",") if d.strip().isdigit()]
+
+    @property
+    def working_day_names(self):
+        day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+        return [day_map[d] for d in self.working_days_list]

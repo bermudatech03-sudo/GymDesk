@@ -13,11 +13,17 @@ function statusBadge(s) {
 /* ─── Enroll modal ─────────────────────────────────── */
 function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
   const isEdit = !!member?.id;
+  const initialPlan = member?.plan
+    ? plans.find(p => String(p.id) === String(member.plan))
+    : null;
+  const [showPersonalTrainer, setShowPersonalTrainer] = useState(
+    (initialPlan?.plans === "standard" || initialPlan?.plans === "premium") && !!initialPlan?.personal_trainer
+  );
   const [form, setForm] = useState(member
     ? { ...member, plan: member.plan || "", diet: member.diet || "" }
     : {
       name: "", phone: "", email: "", gender: "", plan: "", diet: "",
-      renewal_date: "", notes: "", status: "active", amount_paid: ""
+      renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false
     }
   );
   const [saving, setSaving] = useState(false);
@@ -29,6 +35,10 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
       const found = plans.find(p => String(p.id) === String(id));
       if (found) set("amount_paid", found.price_with_gst ?? found.price);
     }
+    const found = plans.find(p => String(p.id) === String(id));
+    const eligible = (found?.plans === "standard" || found?.plans === "premium") && !!found?.personal_trainer;
+    setShowPersonalTrainer(eligible);
+    if (!eligible) set("personal_trainer", false);
   };
 
   const submit = async (e) => {
@@ -38,6 +48,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
         await api.patch(`/members/list/${member.id}/`, {
           ...form,
           diet: form.diet || null,
+          foodType: form.foodType || "veg"
         });
         toast.success("Member updated!");
         onSave(null);
@@ -46,6 +57,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
           ...form,
           plan_id: form.plan || undefined,
           diet_id: form.diet || undefined,
+          foodType: form.foodType || "veg"
         });
         toast.success("Member enrolled!");
         let billData = res.data.bill ?? null;
@@ -88,6 +100,11 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 onChange={e => set("name", e.target.value)} required placeholder="Rajan Kumar" />
             </div>
             <div className="form-group">
+              <label className="form-label">Age</label>
+              <input className="form-input" type="number" min="1" max="120" value={form.age || ""}
+                onChange={e => set("age", e.target.value)} />
+            </div>
+            <div className="form-group">
               <label className="form-label">Phone *</label>
               <input className="form-input" value={form.phone}
                 onChange={e => set("phone", e.target.value)} required placeholder="9876543210" />
@@ -101,9 +118,9 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
               <label className="form-label">Gender</label>
               <select className="form-input" value={form.gender || ""} onChange={e => set("gender", e.target.value)}>
                 <option value="">Select</option>
-                <option value="M">Male</option>
-                <option value="F">Female</option>
-                <option value="O">Other</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
               </select>
             </div>
             <div className="form-group">
@@ -160,6 +177,32 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 })()}
               </>
             )}
+            {
+              showPersonalTrainer === true ?
+                (<div className="form-group">
+                  <label className="form-label">Personal Trainer</label>
+                  <select className="form-input" value={String(form.personal_trainer)} onChange={e => {
+                    const isTrainer = e.target.value === "true";
+                    set("personal_trainer", isTrainer);
+                    if (!isEdit) {
+                      const found = plans.find(p => String(p.id) === String(form.plan));
+                      if (found) {
+                        let basePrice = parseFloat(found.price);
+                        if (isTrainer) {
+                          if (found.plans === "standard") basePrice += 500;
+                          else if (found.plans === "premium") basePrice += 1000;
+                        }
+                        const gstRate = found.gst_rate ?? 18;
+                        const total = Math.round(basePrice * (1 + gstRate / 100) * 100) / 100;
+                        set("amount_paid", total);
+                      }
+                    }
+                  }}>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>) : null
+            }
             <div className="form-group">
               <label className="form-label">Status</label>
               <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
@@ -169,6 +212,15 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 <option value="paused">Paused</option>
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Food Type</label>
+            <select className="form-input" value={form.foodType || ""} onChange={e => set("foodType", e.target.value)}>
+              <option value="veg">Vegetarian</option>
+              <option value="nonveg">Non-Vegetarian</option>
+              <option value="vegan">Vegan</option>
+              <option value="other">Other</option>
+            </select>
           </div>
           <div className="form-group">
             <label className="form-label">Notes</label>

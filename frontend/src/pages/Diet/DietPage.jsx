@@ -5,6 +5,8 @@ import "../../styles/globals.css";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
 
+const FOOD_TYPE_LABELS = { veg: "Vegetarian", nonveg: "Non-Vegetarian", vegan: "Vegan", other: "Other" };
+
 const DietPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [editPlan, setEditPlan] = useState(null);
@@ -120,6 +122,7 @@ const DietPage = () => {
                             <div key={plan.id} className="plan-card">
                                 <div className="plan-card-header">
                                     <h3>{plan.name}</h3>
+                                    <h4 className="plan-card-header">{FOOD_TYPE_LABELS[plan.foodType] ?? plan.foodType}</h4>
                                     <div className="plan-card-meta">
                                         <span>{plan.items?.length || 0} items</span>
                                         <span className="kcal">{totalKcal} kcal</span>

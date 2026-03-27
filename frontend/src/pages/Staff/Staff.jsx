@@ -587,42 +587,36 @@ function StaffCalendar({ staffId, staffName, onBack }) {
                   <div style={{ fontSize: 9, color: "var(--text3)", marginTop: 2 }}>OFF</div>
                 )}
 
-                {/* Times */}
+                {/* Times + working hrs + late/OT details */}
                 {day.check_in && (
-                  <div style={{ fontSize: 9, color: "var(--text2)", marginTop: 2, lineHeight: 1.3 }}>
-                    {day.check_in.slice(0,5)}
-                    {day.check_out ? ` – ${day.check_out.slice(0,5)}` : ""}
+                  <div style={{ fontSize: 9, color: "var(--text2)", marginTop: 2, lineHeight: 1.4 }}>
+                    {day.check_in.slice(0,5)}{day.check_out ? ` – ${day.check_out.slice(0,5)}` : ""}
                   </div>
                 )}
-
-                {/* Late / OT badge */}
-                {(day.late_minutes > 0 || day.overtime_minutes > 0) && (
-                  <div style={{ display: "flex", gap: 2, justifyContent: "center", marginTop: 3, flexWrap: "wrap" }}>
-                    {day.late_minutes > 0 && (
-                      <span style={{ fontSize: 8, background: "rgba(249,115,22,.2)",
-                        color: "#f97316", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>
-                        +{day.late_minutes}m late
-                      </span>
-                    )}
-                    {day.overtime_minutes > 0 && (
-                      <span style={{ fontSize: 8, background: "rgba(59,130,246,.2)",
-                        color: "#3b82f6", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>
-                        +{day.overtime_minutes}m OT
-                      </span>
-                    )}
+                {day.worked_minutes > 0 && (
+                  <div style={{ fontSize: 9, color: "var(--text2)", fontWeight: 600, marginTop: 1 }}>
+                    {fmt_mins(day.worked_minutes)} worked
                   </div>
                 )}
-
-                {/* Shift vs worked hours warning */}
-                {day.worked_minutes > 0 && day.shift_duration && (
+                {day.late_minutes > 0 && (
+                  <div style={{ fontSize: 8, background: "rgba(249,115,22,.2)",
+                    color: "#f97316", borderRadius: 4, padding: "1px 4px",
+                    fontWeight: 700, marginTop: 2, display: "inline-block" }}>
+                    {fmt_mins(day.late_minutes)} late
+                  </div>
+                )}
+                {day.overtime_minutes > 0 && (
+                  <div style={{ fontSize: 8, background: "rgba(59,130,246,.2)",
+                    color: "#3b82f6", borderRadius: 4, padding: "1px 4px",
+                    fontWeight: 700, marginTop: 2, display: "inline-block" }}>
+                    {fmt_mins(day.overtime_minutes)} OT
+                  </div>
+                )}
+                {day.worked_minutes > 0 && day.shift_duration > 0 && (
                   <div style={{ marginTop: 2 }}>
                     {day.worked_minutes < day.shift_duration - 30 ? (
                       <span style={{ fontSize: 8, color: "#ef4444", fontWeight: 700 }}>
                         ↓ {fmt_mins(day.shift_duration - day.worked_minutes)} short
-                      </span>
-                    ) : day.worked_minutes > day.shift_duration + 30 ? (
-                      <span style={{ fontSize: 8, color: "#3b82f6", fontWeight: 700 }}>
-                        ↑ {fmt_mins(day.worked_minutes - day.shift_duration)} extra
                       </span>
                     ) : null}
                   </div>
@@ -865,19 +859,27 @@ function PaymentsTab({ staffList }) {
   const now = new Date();
   const [month,      setMonth]      = useState(now.getMonth() + 1);
   const [year,       setYear]       = useState(now.getFullYear());
-  const [payments,   setPayments]   = useState([]);
+  const [rows,       setRows]       = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [loaded,     setLoaded]     = useState(false);
   const [genLoading, setGenLoading] = useState(false);
 
+  const fmtMins = (m) => {
+    if (!m || m <= 0) return "—";
+    const h = Math.floor(m / 60), mn = m % 60;
+    return h > 0 ? `${h}h ${mn > 0 ? mn + "m" : ""}`.trim() : `${mn}m`;
+  };
+  const fmtRs = (v) => `₹${Number(v || 0).toLocaleString("en-IN")}`;
+  const attColor = (p) => p >= 90 ? "#22c55e" : p >= 75 ? "#f97316" : "#ef4444";
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
-      const res = await api.get(`/staff/payments/?month=${monthStr}&ordering=staff__name`);
-      setPayments(res.data.results || res.data);
+      const res = await api.get(`/staff/members/salary-summary/?year=${year}&month=${month}`);
+      setRows(res.data.staff || []);
       setLoaded(true);
-    } finally { setLoading(false); }
+    } catch { toast.error("Failed to load salary data"); }
+    finally { setLoading(false); }
   }, [month, year]);
 
   const generate = async () => {
@@ -891,144 +893,298 @@ function PaymentsTab({ staffList }) {
     finally { setGenLoading(false); }
   };
 
-  const markPaid = async (p) => {
+  const markPaid = async (row) => {
     try {
-      await api.post(`/staff/payments/${p.id}/mark_paid/`);
-      toast.success(`₹${Number(p.amount).toLocaleString("en-IN")} recorded in Finances!`);
+      if (row.payment_id) {
+        await api.post(`/staff/payments/${row.payment_id}/mark_paid/`);
+      } else {
+        // Create payment record first, then mark paid
+        const monthStr = `${year}-${String(month).padStart(2,"0")}-01`;
+        const created  = await api.post("/staff/payments/", {
+          staff: row.staff_id, month: monthStr, amount: row.salary_payable, status: "pending",
+        });
+        await api.post(`/staff/payments/${created.data.id}/mark_paid/`);
+      }
+      toast.success(`${row.staff_name} — salary marked paid!`);
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
   };
 
-  const markUnpaid = async (p) => {
+  const markUnpaid = async (row) => {
     if (!confirm("Mark as unpaid? This will also remove the Finance record.")) return;
     try {
-      await api.post(`/staff/payments/${p.id}/mark_unpaid/`);
-      toast.success("Marked unpaid. Finance expense removed.");
+      await api.post(`/staff/payments/${row.payment_id}/mark_unpaid/`);
+      toast.success("Marked unpaid.");
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Failed"); }
   };
 
-  const pending      = payments.filter(p => p.status === "pending");
-  const paid         = payments.filter(p => p.status === "paid");
-  const totalPending = pending.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-  const totalPaid    = paid.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  // Summary totals
+  const totalPayable = rows.reduce((s, r) => s + (r.salary_payable || 0), 0);
+  const totalPaid    = rows.filter(r => r.payment_status === "paid").reduce((s, r) => s + (r.payment_amount || 0), 0);
+  const totalPending = rows.filter(r => r.payment_status !== "paid").reduce((s, r) => s + (r.salary_payable || 0), 0);
 
   return (
     <div>
+      {/* Controls */}
       <div style={{
-        background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: "var(--radius)", padding: "16px 20px",
-        display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16,
+        background:"var(--surface)", border:"1px solid var(--border)",
+        borderRadius:"var(--radius)", padding:"16px 20px",
+        display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap", marginBottom:16,
       }}>
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group" style={{ margin:0 }}>
           <label className="form-label">Month</label>
-          <select className="form-input" style={{ minWidth: 100 }} value={month}
+          <select className="form-input" style={{ minWidth:100 }} value={month}
             onChange={e => setMonth(+e.target.value)}>
-            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </select>
         </div>
-        <div className="form-group" style={{ margin: 0 }}>
+        <div className="form-group" style={{ margin:0 }}>
           <label className="form-label">Year</label>
-          <select className="form-input" style={{ minWidth: 90 }} value={year}
+          <select className="form-input" style={{ minWidth:90 }} value={year}
             onChange={e => setYear(+e.target.value)}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         <button className="btn btn-primary" onClick={load} disabled={loading}>
-          {loading ? "Loading…" : "Load Records"}
+          {loading ? "Loading…" : "Load Salaries"}
         </button>
         <button className="btn btn-secondary" onClick={generate} disabled={genLoading}>
-          {genLoading ? "Generating…" : "Generate Salaries"}
+          {genLoading ? "Generating…" : "Generate Records"}
         </button>
+        <div style={{ marginLeft:"auto", fontSize:11, color:"var(--text3)", lineHeight:1.6 }}>
+          Salary = Base × Attendance%<br/>
+          Billable = Worked + OT − Late hrs
+        </div>
       </div>
 
+      {/* Summary cards */}
       {loaded && (
-        <div className="grid-3" style={{ marginBottom: 16 }}>
+        <div className="grid-3" style={{ marginBottom:16 }}>
           <div className="stat-card">
-            <div className="label">Total Staff</div>
-            <div className="value">{payments.length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="label">Pending Salary</div>
-            <div className="value" style={{ color: "var(--warn)" }}>
-              ₹{totalPending.toLocaleString("en-IN")}
-            </div>
-            <div className="sub">{pending.length} staff unpaid</div>
+            <div className="label">Total Payable</div>
+            <div className="value" style={{ color:"var(--accent)" }}>{fmtRs(totalPayable)}</div>
+            <div className="sub">{rows.length} staff</div>
           </div>
           <div className="stat-card">
             <div className="label">Paid Out</div>
-            <div className="value" style={{ color: "var(--accent)" }}>
-              ₹{totalPaid.toLocaleString("en-IN")}
-            </div>
-            <div className="sub">{paid.length} staff paid</div>
+            <div className="value" style={{ color:"#22c55e" }}>{fmtRs(totalPaid)}</div>
+            <div className="sub">{rows.filter(r => r.payment_status === "paid").length} staff paid</div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Pending</div>
+            <div className="value" style={{ color:"var(--warn)" }}>{fmtRs(totalPending)}</div>
+            <div className="sub">{rows.filter(r => r.payment_status !== "paid").length} staff unpaid</div>
           </div>
         </div>
       )}
 
+      {/* Table */}
       {!loaded ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--text3)",
-          fontSize: 14, background: "var(--surface)", borderRadius: "var(--radius)",
-          border: "1px solid var(--border)" }}>
-          Select month & year, then click <b style={{ color: "var(--text2)" }}>Load Records</b>
+        <div style={{ textAlign:"center", padding:"60px 20px", color:"var(--text3)", fontSize:14,
+          background:"var(--surface)", borderRadius:"var(--radius)", border:"1px solid var(--border)" }}>
+          Select month & year, then click <b style={{ color:"var(--text2)" }}>Load Salaries</b>
         </div>
       ) : loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>Loading…</div>
-      ) : payments.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--text3)",
-          fontSize: 13, background: "var(--surface)", borderRadius: "var(--radius)",
-          border: "1px solid var(--border)" }}>
-          No salary records for {MONTHS[month - 1]} {year}.<br />
-          <span style={{ color: "var(--text2)" }}>Click "Generate Salaries" to create them.</span>
+        <div style={{ textAlign:"center", padding:40, color:"var(--text3)" }}>Loading…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"48px 20px", color:"var(--text3)", fontSize:13,
+          background:"var(--surface)", borderRadius:"var(--radius)", border:"1px solid var(--border)" }}>
+          No active staff found.
         </div>
       ) : (
         <div className="card">
           <div className="table-wrap">
             <table>
-              <thead><tr>
-                <th>Staff Name</th><th>Role</th><th>Shift</th>
-                <th>Amount</th><th>Paid Date</th><th>Status</th><th>Action</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th>Staff</th>
+                  <th>Shift</th>
+                  <th style={{ textAlign:"center" }}>Att %</th>
+                  <th style={{ textAlign:"center" }}>Days<br/><span style={{ fontWeight:400 }}>P / A / L / OT</span></th>
+                  <th style={{ textAlign:"right" }}>Sched Hrs</th>
+                  <th style={{ textAlign:"right" }}>Worked Hrs</th>
+                  <th style={{ textAlign:"right" }}>Late</th>
+                  <th style={{ textAlign:"right" }}>OT</th>
+                  <th style={{ textAlign:"right" }}>Billable Hrs</th>
+                  <th style={{ textAlign:"right" }}>Base Sal</th>
+                  <th style={{ textAlign:"right" }}>Payable</th>
+                  <th style={{ textAlign:"center" }}>Status</th>
+                  <th style={{ textAlign:"center" }}>Action</th>
+                </tr>
+              </thead>
               <tbody>
-                {[...pending, ...paid].map(p => (
-                  <tr key={p.id} style={{ opacity: p.status === "paid" ? 0.75 : 1 }}>
-                    <td><b>{p.staff_name}</b></td>
-                    <td><span className="badge badge-blue" style={{ fontSize: 10 }}>{p.staff_role || "—"}</span></td>
-                    <td style={{ fontSize: 12, color: "var(--text3)" }}>
-                      {p.staff_shift ? SHIFTS[p.staff_shift] || p.staff_shift : "—"}
-                    </td>
-                    <td style={{ fontFamily: "var(--font-mono)", fontWeight: 600,
-                      color: p.status === "paid" ? "var(--accent)" : "var(--warn)" }}>
-                      ₹{Number(p.amount).toLocaleString("en-IN")}
-                    </td>
-                    <td style={{ fontSize: 12, color: "var(--text3)" }}>{p.paid_date || "—"}</td>
-                    <td>
-                      <span className={`badge ${p.status === "paid" ? "badge-green" : "badge-yellow"}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td>
-                      {p.status !== "paid" ? (
-                        <button className="btn btn-sm btn-primary" onClick={() => markPaid(p)}>
-                          ✓ Mark Paid
-                        </button>
-                      ) : (
-                        <button className="btn btn-sm"
-                          style={{ background: "rgba(255,91,91,.12)", color: "var(--danger)", border: "1px solid rgba(255,91,91,.25)" }}
-                          onClick={() => markUnpaid(p)}>
-                          ↩ Undo
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map(r => {
+                  const isPaid   = r.payment_status === "paid";
+                  const attPct   = r.attendance_pct || 0;
+                  const hoursPct = r.hours_pct      || 0;
+                  const attCol   = attColor(attPct);
+                  const hrCol    = attColor(hoursPct);
+
+                  return (
+                    <tr key={r.staff_id} style={{ opacity: isPaid ? 0.8 : 1 }}>
+                      {/* Name + Role */}
+                      <td>
+                        <div style={{ fontWeight:700, fontSize:13 }}>{r.staff_name}</div>
+                        <div>
+                          <span className="badge badge-blue" style={{ fontSize:10 }}>{r.staff_role}</span>
+                        </div>
+                      </td>
+
+                      {/* Shift */}
+                      <td style={{ fontSize:11, color:"var(--text2)" }}>
+                        {r.shift_name ? (
+                          <>
+                            <div style={{ fontWeight:600, color:"var(--accent)" }}>{r.shift_name}</div>
+                            <div style={{ color:"var(--text3)", fontSize:10 }}>
+                              {r.shift_start?.slice(0,5)}–{r.shift_end?.slice(0,5)}
+                            </div>
+                          </>
+                        ) : <span style={{ color:"var(--text3)" }}>No shift</span>}
+                      </td>
+
+                      {/* Attendance % */}
+                      <td style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:11, color:"var(--text3)", marginBottom:1 }}>
+                          Days: <span style={{ fontWeight:700, color:attCol }}>{attPct}%</span>
+                        </div>
+                        <div style={{ fontSize:15, fontWeight:800, color:hrCol,
+                          fontFamily:"var(--font-mono)" }}>{hoursPct}%</div>
+                        <div style={{ fontSize:9, color:"var(--text3)", marginBottom:2 }}>hrs worked</div>
+                        <div style={{ width:52, height:4, background:"var(--surface2)",
+                          borderRadius:2, margin:"2px auto 0" }}>
+                          <div style={{ width:`${Math.min(hoursPct,100)}%`, height:"100%",
+                            background:hrCol, borderRadius:2 }}/>
+                        </div>
+                      </td>
+
+                      {/* P / A / Late / OT days */}
+                      <td style={{ textAlign:"center", fontSize:12, fontFamily:"var(--font-mono)" }}>
+                        <span style={{ color:"#22c55e" }}>{r.days_present}</span>
+                        <span style={{ color:"var(--text3)" }}>/</span>
+                        <span style={{ color:"#ef4444" }}>{r.days_absent}</span>
+                        <span style={{ color:"var(--text3)" }}>/</span>
+                        <span style={{ color:"#f97316" }}>{r.days_late}</span>
+                        <span style={{ color:"var(--text3)" }}>/</span>
+                        <span style={{ color:"#3b82f6" }}>{r.days_ot}</span>
+                      </td>
+
+                      {/* Scheduled hrs */}
+                      <td style={{ textAlign:"right", fontSize:11,
+                        fontFamily:"var(--font-mono)", color:"var(--text3)" }}>
+                        {fmtMins(r.total_scheduled_mins)}
+                      </td>
+
+                      {/* Worked hrs */}
+                      <td style={{ textAlign:"right", fontSize:12,
+                        fontFamily:"var(--font-mono)", color:"var(--text1)", fontWeight:600 }}>
+                        {fmtMins(r.total_worked_mins)}
+                      </td>
+
+                      {/* Late */}
+                      <td style={{ textAlign:"right" }}>
+                        {r.total_late_mins > 0 ? (
+                          <span style={{ fontSize:11, fontWeight:700, color:"#f97316",
+                            background:"rgba(249,115,22,.12)", padding:"2px 6px", borderRadius:4 }}>
+                            −{fmtMins(r.total_late_mins)}
+                          </span>
+                        ) : <span style={{ color:"var(--text3)", fontSize:11 }}>—</span>}
+                      </td>
+
+                      {/* OT */}
+                      <td style={{ textAlign:"right" }}>
+                        {r.total_ot_mins > 0 ? (
+                          <span style={{ fontSize:11, fontWeight:700, color:"#3b82f6",
+                            background:"rgba(59,130,246,.12)", padding:"2px 6px", borderRadius:4 }}>
+                            +{fmtMins(r.total_ot_mins)}
+                          </span>
+                        ) : <span style={{ color:"var(--text3)", fontSize:11 }}>—</span>}
+                      </td>
+
+                      {/* Billable hrs */}
+                      <td style={{ textAlign:"right", fontSize:12,
+                        fontFamily:"var(--font-mono)", color:"var(--accent)", fontWeight:700 }}>
+                        {fmtMins(r.billable_mins)}
+                        {r.total_scheduled_mins > 0 && (
+                          <div style={{ fontSize:9, color:"var(--text3)", fontWeight:400 }}>
+                            of {fmtMins(r.total_scheduled_mins)}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Base salary */}
+                      <td style={{ textAlign:"right", fontSize:12,
+                        fontFamily:"var(--font-mono)", color:"var(--text3)" }}>
+                        {fmtRs(r.base_salary)}
+                      </td>
+
+                      {/* Payable */}
+                      <td style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:14, fontWeight:800,
+                          fontFamily:"var(--font-mono)", color:hrCol }}>
+                          {fmtRs(r.salary_payable)}
+                        </div>
+                        {r.salary_payable !== r.base_salary && (
+                          <div style={{ fontSize:9, color:"var(--text3)" }}>
+                            {hoursPct}% of {fmtRs(r.base_salary)}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Status badge */}
+                      <td style={{ textAlign:"center" }}>
+                        <span className={`badge ${
+                          isPaid              ? "badge-green"  :
+                          r.payment_status === "partial"   ? "badge-yellow" :
+                          r.payment_status === "no_record" ? "badge-gray"   : "badge-yellow"
+                        }`}>
+                          {isPaid ? "Paid" : r.payment_status === "no_record" ? "No Record" : "Pending"}
+                        </span>
+                        {r.paid_date && (
+                          <div style={{ fontSize:9, color:"var(--text3)", marginTop:2 }}>{r.paid_date}</div>
+                        )}
+                      </td>
+
+                      {/* Action */}
+                      <td style={{ textAlign:"center" }}>
+                        {!isPaid ? (
+                          <button className="btn btn-sm btn-primary"
+                            onClick={() => markPaid(r)}>
+                            ✓ Pay {fmtRs(r.salary_payable)}
+                          </button>
+                        ) : (
+                          <button className="btn btn-sm"
+                            style={{ background:"rgba(255,91,91,.12)", color:"var(--danger)",
+                              border:"1px solid rgba(255,91,91,.25)" }}
+                            onClick={() => markUnpaid(r)}>
+                            ↩ Undo
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          {/* Formula legend */}
+          <div style={{ padding:"10px 18px", borderTop:"1px solid var(--border)",
+            fontSize:11, color:"var(--text3)", display:"flex", gap:20, flexWrap:"wrap" }}>
+            <span>📊 <b>Att%</b> = Present days ÷ Working days</span>
+            <span>⏱ <b>Billable</b> = Worked + OT − Late</span>
+            <span>⏱ <b>Hrs%</b> = Billable hrs ÷ Scheduled hrs → used for salary</span>
+            <span>💰 <b>Payable</b> = Base salary × Hrs%</span>
+            <span style={{ color:"#22c55e" }}>● ≥90% full pay</span>
+            <span style={{ color:"#f97316" }}>● 75–89% partial</span>
+            <span style={{ color:"#ef4444" }}>● &lt;75% reduced</span>
           </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // ─── Main Staff Page ─────────────────────────────────────────────────────────
 

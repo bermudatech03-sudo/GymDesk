@@ -22,22 +22,37 @@ from .serializers import (
 def _record_expense(staff, amount, month):
     from apps.finances.models import Expenditure
     month_name = calendar.month_name[month.month]
+
+    # Recalculate att_pct just for the label
+    days, counts = _build_staff_calendar(staff, month.year, month.month)
+    working_days = counts["working_days"]
+    days_present = (
+        counts.get("present", 0) + counts.get("late", 0)
+        + counts.get("overtime", 0) + counts.get("late_overtime", 0)
+        + counts.get("half", 0) * 0.5
+    )
+    att_pct = round(days_present / working_days * 100, 1) if working_days > 0 else 0
+
     Expenditure.objects.create(
         category="salary",
-        description=f"Salary — {staff.name} ({month_name} {month.year})",
+        description=f"Salary — {staff.name} ({month_name} {month.year}) [{att_pct}% attendance]",
         amount=amount,
         date=timezone.localdate(),
         vendor=staff.name,
-        notes=f"Role: {staff.role} | Shift: {staff.shift} | Month: {month_name} {month.year}",
+        notes=(
+            f"Role: {staff.role} | Shift: {staff.shift} | Month: {month_name} {month.year} "
+            f"| Base: ₹{staff.salary} | Attendance: {att_pct}% | Payable: ₹{amount}"
+        ),
     )
 
 
 def _delete_expense(staff, month):
     from apps.finances.models import Expenditure
     month_name = calendar.month_name[month.month]
-    label = f"Salary — {staff.name} ({month_name} {month.year})"
     Expenditure.objects.filter(
-        category="salary", vendor=staff.name, description=label,
+        category="salary",
+        vendor=staff.name,
+        notes__icontains=f"Month: {month_name} {month.year}",  # matches the notes format
     ).delete()
 
 
@@ -75,16 +90,22 @@ def _auto_mark_absent_staff():
 
 def _auto_mark_absent_members():
     """
-    For every active/expired member, if they have no attendance for yesterday
-    → create absent record. (Gym is open every day including Sunday.)
+    For every active/expired member, mark absent for every past day (up to
+    yesterday) that has no attendance record. Gym is open all 7 days.
+    Only runs once per day effectively because get_or_create is idempotent.
     """
     from apps.members.models import Member, MemberAttendance
     yesterday = timezone.localdate() - timedelta(days=1)
-    for member in Member.objects.filter(status__in=["active", "expired"]):
-        MemberAttendance.objects.get_or_create(
-            member=member, date=yesterday,
-            defaults={"status": "absent"},
-        )
+    members   = list(Member.objects.filter(status__in=["active", "expired"]))
+    for member in members:
+        # Backfill from join_date up to yesterday for any missing day
+        start = max(member.join_date, yesterday)   # only do yesterday for perf
+        for delta in range((yesterday - start).days + 1):
+            day = start + timedelta(days=delta)
+            MemberAttendance.objects.get_or_create(
+                member=member, date=day,
+                defaults={"check_in": None, "check_out": None},
+            )
 
 
 # ─── Calendar builder ────────────────────────────────────────────────────────
@@ -107,7 +128,11 @@ def _build_staff_calendar(staff, year, month_num):
 
     days = []
     counts = {"present": 0, "absent": 0, "late": 0, "overtime": 0,
-              "half": 0, "leave": 0, "auto_absent": 0, "working_days": 0}
+              "late_overtime": 0, "half": 0, "leave": 0, "auto_absent": 0,
+              "working_days": 0,
+              "total_worked_minutes": 0, "total_late_minutes": 0, "total_ot_minutes": 0}
+
+    shift_day_mins = shift.shift_duration_minutes() if shift else 0
 
     for day_num in range(1, num_days + 1):
         d          = dt.date(year, month_num, day_num)
@@ -118,6 +143,14 @@ def _build_staff_calendar(staff, year, month_num):
         if is_working and not is_future:
             counts["working_days"] += 1
 
+        wm = rec.worked_minutes   if rec else 0
+        lm = rec.late_minutes     if rec else 0
+        om = rec.overtime_minutes if rec else 0
+
+        counts["total_worked_minutes"] += wm
+        counts["total_late_minutes"]   += lm
+        counts["total_ot_minutes"]     += om
+
         day_data = {
             "date":             str(d),
             "day_num":          day_num,
@@ -127,12 +160,12 @@ def _build_staff_calendar(staff, year, month_num):
             "status":           rec.status    if rec else (None if is_future else "absent"),
             "check_in":         str(rec.check_in)  if rec and rec.check_in  else None,
             "check_out":        str(rec.check_out) if rec and rec.check_out else None,
-            "worked_minutes":   rec.worked_minutes   if rec else 0,
-            "late_minutes":     rec.late_minutes     if rec else 0,
-            "overtime_minutes": rec.overtime_minutes if rec else 0,
+            "worked_minutes":   wm,
+            "late_minutes":     lm,
+            "overtime_minutes": om,
             "shift_start":      str(shift.start_time) if shift else None,
             "shift_end":        str(shift.end_time)   if shift else None,
-            "shift_duration":   shift.shift_duration_minutes() if shift else None,
+            "shift_duration":   shift_day_mins,
             "attendance_id":    rec.id if rec else None,
         }
         days.append(day_data)
@@ -141,6 +174,9 @@ def _build_staff_calendar(staff, year, month_num):
             st = rec.status
             if st in counts:
                 counts[st] += 1
+
+    # Total scheduled hours for the month = working_days × shift_duration
+    counts["total_scheduled_minutes"] = counts["working_days"] * shift_day_mins
 
     return days, counts
 
@@ -314,6 +350,75 @@ class StaffViewSet(viewsets.ModelViewSet):
             },
         )
         return Response(AttendanceSerializer(rec).data)
+    
+
+    
+    @action(detail=False, methods=["get"], url_path="salary-summary")
+    def salary_summary(self, request):
+        # GET /staff/members/salary-summary/?year=2026&month=3
+        # Returns one row per active staff with attendance + salary breakdown.
+        _auto_mark_absent_staff()
+        today     = timezone.localdate()
+        year      = int(request.query_params.get("year",  today.year))
+        month_num = int(request.query_params.get("month", today.month))
+
+        results = []
+        for staff in StaffMember.objects.filter(status="active").select_related("shift_template"):
+            days, counts = _build_staff_calendar(staff, year, month_num)
+
+            base_salary          = float(staff.salary)
+            working_days         = counts["working_days"]
+            total_worked_mins    = counts["total_worked_minutes"]
+            total_scheduled_mins = counts["total_scheduled_minutes"]
+            total_late_mins      = counts["total_late_minutes"]
+            total_ot_mins        = counts["total_ot_minutes"]
+
+            days_present = (counts.get("present", 0) + counts.get("late", 0) +
+                            counts.get("overtime", 0) + counts.get("late_overtime", 0) +
+                            counts.get("half", 0) * 0.5)
+            att_pct        = round(days_present / working_days * 100, 1) if working_days > 0 else 0
+            billable_mins  = max(0, total_worked_mins + total_ot_mins - total_late_mins)
+            hours_pct      = round(billable_mins / total_scheduled_mins * 100, 1) if total_scheduled_mins > 0 else att_pct
+            salary_payable = round(base_salary * hours_pct / 100, 2)
+
+            month_date = dt.date(year, month_num, 1)
+            payment    = StaffPayment.objects.filter(staff=staff, month=month_date).first()
+
+            shift = staff.get_shift_template()
+            results.append({
+                "staff_id":             staff.id,
+                "staff_name":           staff.name,
+                "staff_role":           staff.role,
+                "shift_name":           shift.name if shift else None,
+                "shift_start":          str(shift.start_time) if shift else None,
+                "shift_end":            str(shift.end_time)   if shift else None,
+                "shift_day_minutes":    shift.shift_duration_minutes() if shift else 0,
+                "base_salary":          base_salary,
+                "working_days":         working_days,
+                "days_present":         days_present,
+                "days_absent":          counts.get("absent", 0) + counts.get("auto_absent", 0),
+                "days_late":            counts.get("late", 0) + counts.get("late_overtime", 0),
+                "days_ot":              counts.get("overtime", 0) + counts.get("late_overtime", 0),
+                "days_leave":           counts.get("leave", 0),
+                "days_half":            counts.get("half", 0),
+                "attendance_pct":       att_pct,
+                "hours_pct":            hours_pct,
+                "total_scheduled_mins": total_scheduled_mins,
+                "total_worked_mins":    total_worked_mins,
+                "total_late_mins":      total_late_mins,
+                "total_ot_mins":        total_ot_mins,
+                "billable_mins":        billable_mins,
+                "salary_payable":       salary_payable,
+                "payment_id":           payment.id     if payment else None,
+                "payment_status":       payment.status if payment else "no_record",
+                "payment_amount":       float(payment.amount) if payment else salary_payable,
+                "paid_date":            str(payment.paid_date) if payment and payment.paid_date else None,
+            })
+
+        return Response({"year": year, "month": month_num,
+                         "month_name": calendar.month_name[month_num],
+                         "staff": results})
+
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
@@ -405,9 +510,34 @@ class PaymentViewSet(viewsets.ModelViewSet):
         p = self.get_object()
         if p.status == "paid":
             return Response({"detail": "Already paid."}, status=400)
+
+        # ── Recalculate attendance-based salary ──────────────────────────────
+        days, counts = _build_staff_calendar(p.staff, p.month.year, p.month.month)
+
+        working_days = counts["working_days"]
+        days_present = (
+            counts.get("present", 0)
+            + counts.get("late", 0)
+            + counts.get("overtime", 0)
+            + counts.get("late_overtime", 0)
+            + counts.get("half", 0) * 0.5
+        )
+        att_pct              = round(days_present / working_days * 100, 1) if working_days > 0 else 0
+        total_worked_mins    = counts["total_worked_minutes"]
+        total_scheduled_mins = counts["total_scheduled_minutes"]
+        total_late_mins      = counts["total_late_minutes"]
+        total_ot_mins        = counts["total_ot_minutes"]
+        billable_mins        = max(0, total_worked_mins + total_ot_mins - total_late_mins)
+        hours_pct            = round(billable_mins / total_scheduled_mins * 100, 1) if total_scheduled_mins > 0 else att_pct
+        salary_payable       = round(float(p.staff.salary) * hours_pct / 100, 2)
+
+        # Stamp the attendance-based amount onto the payment record
+        p.amount    = salary_payable
         p.status    = "paid"
         p.paid_date = timezone.localdate()
         p.save()
+        # ────────────────────────────────────────────────────────────────────
+
         _record_expense(p.staff, p.amount, p.month)
         return Response(PaymentSerializer(p).data)
 
@@ -419,5 +549,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
         _delete_expense(p.staff, p.month)
         p.status    = "pending"
         p.paid_date = None
+        p.amount    = p.staff.salary   # reset to base so salary_summary recalculates fresh
         p.save()
         return Response(PaymentSerializer(p).data)

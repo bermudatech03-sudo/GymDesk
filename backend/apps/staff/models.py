@@ -167,23 +167,34 @@ class StaffAttendance(models.Model):
                 et += timedelta(days=1)    # overnight shift
 
             # Late calculation
-            grace_end         = st + timedelta(minutes=shift.late_grace_minutes)
-            self.late_minutes = max(0, int((ci - grace_end).total_seconds() / 60)) if ci > grace_end else 0
+            # Late calculation:
+            # Only trigger if check_in exceeds grace window,
+            # but measure from shift START (not from grace end)
+            grace_end = st + timedelta(minutes=shift.late_grace_minutes)
+            if ci > grace_end:
+                self.late_minutes = int((ci - st).total_seconds() / 60)
+            else:
+                self.late_minutes = 0
 
             if self.check_out:
                 co = datetime.combine(base, self.check_out)
                 if co < ci:
                     co += timedelta(days=1)
                 self.worked_minutes = int((co - ci).total_seconds() / 60)
-                ot_start              = et + timedelta(minutes=shift.overtime_threshold_minutes)
-                self.overtime_minutes = max(0, int((co - ot_start).total_seconds() / 60)) if co > ot_start else 0
+                # OT: only trigger if check_out exceeds threshold window,
+                # but measure from shift END (not from threshold point)
+                ot_start = et + timedelta(minutes=shift.overtime_threshold_minutes)
+                if co > ot_start:
+                    self.overtime_minutes = int((co - et).total_seconds() / 60)
+                else:
+                    self.overtime_minutes = 0
             else:
                 self.worked_minutes   = 0
                 self.overtime_minutes = 0
 
-            # Auto-derive status (only if not an admin-forced override)
+            # Auto-derive status — only if not admin-forced
             if self.status not in ("absent", "half", "leave", "auto_absent"):
-                if self.overtime_minutes > 0 and self.late_minutes > 0 :
+                if self.overtime_minutes > 0 and self.late_minutes > 0:
                     self.status = "late_overtime"
                 elif self.overtime_minutes > 0:
                     self.status = "overtime"
@@ -192,7 +203,7 @@ class StaffAttendance(models.Model):
                 else:
                     self.status = "present"
 
-        super().save(*args, **kwargs)
+                    super().save(*args, **kwargs)
 
 
 class StaffPayment(models.Model):

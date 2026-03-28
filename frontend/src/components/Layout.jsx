@@ -21,12 +21,17 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => { logout(); navigate("/login"); };
 
   return (
     <div className={`layout ${collapsed ? "layout--collapsed" : ""}`}>
-      <aside className="sidebar">
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
+      )}
+      <aside className={`sidebar ${mobileOpen ? "sidebar--mobile-open" : ""}`}>
         <div className="sidebar__logo">
           <div className="sidebar__logo-mark">G</div>
           {!collapsed && (
@@ -43,6 +48,7 @@ export default function Layout() {
         <nav className="sidebar__nav">
           {NAV.map(n => (
             <NavLink key={n.to} to={n.to}
+              onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 `sidebar__link ${isActive ? "sidebar__link--active" : ""}`}>
               <span className="sidebar__link-icon">{n.icon}</span>
@@ -53,7 +59,8 @@ export default function Layout() {
           {/* Kiosk quick-launch */}
           <a href="/kiosk" target="_blank" rel="noopener"
             className="sidebar__link sidebar__link--kiosk"
-            title="Open Kiosk">
+            title="Open Kiosk"
+            onClick={() => setMobileOpen(false)}>
             <span className="sidebar__link-icon">⊙</span>
             {!collapsed && <span className="sidebar__link-label">Kiosk ↗</span>}
           </a>
@@ -78,6 +85,9 @@ export default function Layout() {
       <div className="main-area">
         <header className="topbar">
           <div className="topbar__left">
+            <button className="topbar__hamburger" onClick={() => setMobileOpen(p => !p)} aria-label="Toggle menu">
+              ☰
+            </button>
             <div className="topbar__title" id="page-title">Dashboard</div>
           </div>
           <div className="topbar__right">

@@ -166,9 +166,7 @@ class StaffAttendance(models.Model):
             if et < st:
                 et += timedelta(days=1)    # overnight shift
 
-            # Late calculation
-            # Late calculation:
-            # Only trigger if check_in exceeds grace window,
+            # Late: trigger only if check_in exceeds grace window,
             # but measure from shift START (not from grace end)
             grace_end = st + timedelta(minutes=shift.late_grace_minutes)
             if ci > grace_end:
@@ -181,7 +179,7 @@ class StaffAttendance(models.Model):
                 if co < ci:
                     co += timedelta(days=1)
                 self.worked_minutes = int((co - ci).total_seconds() / 60)
-                # OT: only trigger if check_out exceeds threshold window,
+                # OT: trigger only if check_out exceeds threshold window,
                 # but measure from shift END (not from threshold point)
                 ot_start = et + timedelta(minutes=shift.overtime_threshold_minutes)
                 if co > ot_start:
@@ -202,8 +200,21 @@ class StaffAttendance(models.Model):
                     self.status = "late"
                 else:
                     self.status = "present"
+        else:
+            # No check_in (absent/leave) — reset all computed fields
+            if not self.check_in:
+                self.worked_minutes   = 0
+                self.late_minutes     = 0
+                self.overtime_minutes = 0
 
-                    super().save(*args, **kwargs)
+        # Django's update_or_create passes update_fields=defaults.keys(), which
+        # excludes our computed columns.  Force them in so they're always written.
+        if "update_fields" in kwargs:
+            uf = set(kwargs["update_fields"])
+            uf.update({"worked_minutes", "late_minutes", "overtime_minutes", "status"})
+            kwargs["update_fields"] = list(uf)
+
+        super().save(*args, **kwargs)
 
 
 class StaffPayment(models.Model):

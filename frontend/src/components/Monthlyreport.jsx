@@ -74,17 +74,18 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
   .rp-table th.c{text-align:center}
   .rp-table td{padding:6px 8px;border-bottom:1px solid #f2f2f2;vertical-align:middle;color:#333;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rp-table td.r{text-align:right;font-family:'Courier New',monospace}
+  .rp-table td.r{text-align:right;font-family:'Courier New',monospace;white-space:nowrap;overflow:visible}
   .rp-table td.c{text-align:center}
   .rp-table td.mono{font-family:'Courier New',monospace;font-size:10px;color:#666}
   .rp-table .total-row td{font-weight:800;background:#f0f0f0;border-top:2px solid #ccc;
     border-bottom:none;font-size:12px}
   .rp-table tbody tr:hover td{background:#fafafa}
-  /* income table col widths */
-  .income-table col.col-date{width:9%}.income-table col.col-inv{width:12%}
-  .income-table col.col-src{width:18%}.income-table col.col-cat{width:14%}
-  .income-table col.col-base{width:12%}.income-table col.col-gp{width:7%}
-  .income-table col.col-gamt{width:12%}.income-table col.col-total{width:16%}
+  /* income table col widths — 9 cols */
+  .income-table col.col-date{width:8%}.income-table col.col-inv{width:10%}
+  .income-table col.col-src{width:16%}.income-table col.col-cat{width:12%}
+  .income-table col.col-base{width:11%}.income-table col.col-gp{width:6%}
+  .income-table col.col-gamt{width:11%}.income-table col.col-plan{width:13%}
+  .income-table col.col-paid{width:13%}
   /* expense table col widths */
   .expense-table col.col-date{width:10%}.expense-table col.col-desc{width:32%}
   .expense-table col.col-cat{width:20%}.expense-table col.col-vendor{width:24%}

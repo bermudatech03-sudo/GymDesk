@@ -338,14 +338,25 @@ function ShiftsTab() {
 // ─── Mark Day Modal ──────────────────────────────────────────────────────────
 
 function MarkDayModal({ staffId, date, existing, onClose, onSave }) {
+  // Strip seconds so <input type="time"> always gets "HH:MM"
+  const toHHMM = (t) => (t ? String(t).slice(0, 5) : "");
+
   const [form, setForm] = useState({
     status:    existing?.status    || "present",
-    check_in:  existing?.check_in  || "",
-    check_out: existing?.check_out || "",
+    check_in:  toHHMM(existing?.check_in),
+    check_out: toHHMM(existing?.check_out),
     notes:     existing?.notes     || "",
   });
   const [saving, setSaving] = useState(false);
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k, v) => setForm(p => {
+    const next = { ...p, [k]: v };
+    // Clear times when switching to a status that has no check-in
+    if (k === "status" && ["absent", "auto_absent", "leave"].includes(v)) {
+      next.check_in  = "";
+      next.check_out = "";
+    }
+    return next;
+  });
 
   const submit = async (e) => {
     e.preventDefault(); setSaving(true);

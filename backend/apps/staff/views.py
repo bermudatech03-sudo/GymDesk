@@ -37,7 +37,7 @@ def _record_expense(staff, amount, month):
         category="salary",
         description=f"Salary — {staff.name} ({month_name} {month.year}) [{att_pct}% attendance]",
         amount=amount,
-        date=timezone.localdate(),
+        date=month,  # date = 1st of the payment month so Finance summary filters correctly
         vendor=staff.name,
         notes=(
             f"Role: {staff.role} | Shift: {staff.shift} | Month: {month_name} {month.year} "
@@ -49,10 +49,13 @@ def _record_expense(staff, amount, month):
 def _delete_expense(staff, month):
     from apps.finances.models import Expenditure
     month_name = calendar.month_name[month.month]
+    # Match by notes (correct month label) OR by date in that month (catches legacy records)
     Expenditure.objects.filter(
         category="salary",
         vendor=staff.name,
-        notes__icontains=f"Month: {month_name} {month.year}",  # matches the notes format
+    ).filter(
+        Q(notes__icontains=f"Month: {month_name} {month.year}") |
+        Q(date__year=month.year, date__month=month.month)
     ).delete()
 
 
@@ -209,15 +212,28 @@ def _build_member_calendar(member, year, month_num):
             status = "present" if (rec and rec.check_in) else "absent"
             counts[status] += 1
 
+        # Compute working minutes from check_in / check_out for display
+        worked_minutes = 0
+        if rec and rec.check_in and rec.check_out:
+            from datetime import datetime as _dt
+            base = d
+            ci   = _dt.combine(base, rec.check_in)
+            co   = _dt.combine(base, rec.check_out)
+            if co < ci:
+                from datetime import timedelta as _td
+                co += _td(days=1)
+            worked_minutes = max(0, int((co - ci).total_seconds() / 60))
+
         days.append({
-            "date":          str(d),
-            "day_num":       day_num,
-            "weekday":       d.strftime("%a"),
-            "is_future":     is_future,
-            "status":        status,
-            "check_in":      str(rec.check_in)  if rec and rec.check_in  else None,
-            "check_out":     str(rec.check_out) if rec and rec.check_out else None,
-            "attendance_id": rec.id if rec else None,
+            "date":           str(d),
+            "day_num":        day_num,
+            "weekday":        d.strftime("%a"),
+            "is_future":      is_future,
+            "status":         status,
+            "check_in":       str(rec.check_in)  if rec and rec.check_in  else None,
+            "check_out":      str(rec.check_out) if rec and rec.check_out else None,
+            "worked_minutes": worked_minutes,
+            "attendance_id":  rec.id if rec else None,
         })
 
     return days, counts
@@ -339,6 +355,11 @@ class StaffViewSet(viewsets.ModelViewSet):
 
         check_in  = _parse_time(request.data.get("check_in"))
         check_out = _parse_time(request.data.get("check_out"))
+
+        # Absent / leave / auto_absent records must not carry stale times
+        if status_val in ("absent", "auto_absent", "leave"):
+            check_in  = None
+            check_out = None
 
         rec, _ = StaffAttendance.objects.update_or_create(
             staff=staff, date=date,
@@ -549,6 +570,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
         _delete_expense(p.staff, p.month)
         p.status    = "pending"
         p.paid_date = None
-        p.amount    = p.staff.salary   # reset to base so salary_summary recalculates fresh
+        p.amount    = p.staff.salary  # reset to base so salary_summary recalculates fresh
         p.save()
         return Response(PaymentSerializer(p).data)

@@ -3,6 +3,7 @@ import api from "../../api/axios";
 import toast from "react-hot-toast";
 import "./Members.css";
 import MemberBill from "../../components/MemberBill";
+import ConfirmModal from "../../components/ConfirmModal";
 
 
 function statusBadge(s) {
@@ -13,16 +14,10 @@ function statusBadge(s) {
 /* ─── Enroll modal ─────────────────────────────────── */
 function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
   const isEdit = !!member?.id;
-  const initialPlan = member?.plan
-    ? plans.find(p => String(p.id) === String(member.plan))
-    : null;
-  const [showPersonalTrainer, setShowPersonalTrainer] = useState(
-    (initialPlan?.plans === "standard" || initialPlan?.plans === "premium") && !!initialPlan?.personal_trainer
-  );
   const [form, setForm] = useState(member
-    ? { ...member, plan: member.plan || "", diet: member.diet || "" }
+    ? { ...member, plan: member.plan || "", diet: member.diet || "", plan_type: member.plan_type || "basic" }
     : {
-      name: "", phone: "", email: "", gender: "", plan: "", diet: "",
+      name: "", phone: "", email: "", gender: "", plan: "", plan_type: "basic", diet: "",
       renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false
     }
   );
@@ -31,14 +26,32 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
 
   const handlePlanChange = (id) => {
     set("plan", id);
+    const found = plans.find(p => String(p.id) === String(id));
+    if (found) {
+      if (!isEdit) set("amount_paid", found.price_with_gst ?? found.price);
+      if (found.duration_days) {
+        const renewal = new Date();
+        renewal.setDate(renewal.getDate() + Number(found.duration_days));
+        set("renewal_date", renewal.toISOString().split("T")[0]);
+      }
+    } else {
+      set("renewal_date", "");
+    }
+    // reset plan_type and extras when plan changes
+    set("plan_type", "basic");
+    set("personal_trainer", false);
+    set("diet", "");
+  };
+
+  const handlePlanTypeChange = (planType) => {
+    set("plan_type", planType);
+    set("personal_trainer", true);
+    if (planType !== "premium") set("diet", "");
+    // recalc amount_paid to base price when changing type
     if (!isEdit) {
-      const found = plans.find(p => String(p.id) === String(id));
+      const found = plans.find(p => String(p.id) === String(form.plan));
       if (found) set("amount_paid", found.price_with_gst ?? found.price);
     }
-    const found = plans.find(p => String(p.id) === String(id));
-    const eligible = (found?.plans === "standard" || found?.plans === "premium") && !!found?.personal_trainer;
-    setShowPersonalTrainer(eligible);
-    if (!eligible) set("personal_trainer", false);
   };
 
   const submit = async (e) => {
@@ -61,9 +74,11 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
         });
         toast.success("Member enrolled!");
         let billData = res.data.bill ?? null;
+        console.log("Initial  data:", res.data);
         if (billData && res.data.id) {
           try {
             const hRes = await api.get("/members/payments/", { params: { member: res.data.id } });
+            console.log("member:", res.data.id, "payments response:", hRes.data);
             const raw = hRes.data;
             const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
             list.sort((a, b) => new Date(a.paid_date) - new Date(b.paid_date));
@@ -134,16 +149,52 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 ))}
               </select>
             </div>
-            <div className="form-group">
-              <label className="form-label">Diet Plan</label>
-              <select className="form-input" value={form.diet || ""} onChange={e => set("diet", e.target.value)}>
-                <option value="">No Diet Plan</option>
-                {dietPlans.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-
+            {form.plan && (
+              <div className="form-group">
+                <label className="form-label">Plan Type</label>
+                <select className="form-input" value={form.plan_type} onChange={e => handlePlanTypeChange(e.target.value)}>
+                  <option value="basic">Basic</option>
+                  <option value="standard">Standard — includes Personal Trainer</option>
+                  <option value="premium">Premium — includes Personal Trainer + Diet Plan</option>
+                </select>
+              </div>
+            )}
+            {/* {(form.plan_type === "standard" || form.plan_type === "premium") && (
+              <div className="form-group">
+                <label className="form-label">Personal Trainer</label>
+                <select className="form-input" value={String(form.personal_trainer)} onChange={e => {
+                  const isTrainer = e.target.value === "true";
+                  set("personal_trainer", isTrainer);
+                  if (!isEdit) {
+                    const found = plans.find(p => String(p.id) === String(form.plan));
+                    if (found) {
+                      let basePrice = parseFloat(found.price);
+                      if (isTrainer) {
+                        if (form.plan_type === "standard") basePrice += 500;
+                        else if (form.plan_type === "premium") basePrice += 1000;
+                      }
+                      const gstRate = found.gst_rate ?? 18;
+                      const total = Math.round(basePrice * (1 + gstRate / 100) * 100) / 100;
+                      set("amount_paid", total);
+                    }
+                  }
+                }}>
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </select>
+              </div>
+            )} */}
+            {form.plan_type === "premium" && (
+              <div className="form-group">
+                <label className="form-label">Diet Plan</label>
+                <select className="form-input" value={form.diet || ""} onChange={e => set("diet", e.target.value)}>
+                  <option value="">No Diet Plan</option>
+                  {dietPlans.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Renewal Date</label>
@@ -177,32 +228,6 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 })()}
               </>
             )}
-            {
-              showPersonalTrainer === true ?
-                (<div className="form-group">
-                  <label className="form-label">Personal Trainer</label>
-                  <select className="form-input" value={String(form.personal_trainer)} onChange={e => {
-                    const isTrainer = e.target.value === "true";
-                    set("personal_trainer", isTrainer);
-                    if (!isEdit) {
-                      const found = plans.find(p => String(p.id) === String(form.plan));
-                      if (found) {
-                        let basePrice = parseFloat(found.price);
-                        if (isTrainer) {
-                          if (found.plans === "standard") basePrice += 500;
-                          else if (found.plans === "premium") basePrice += 1000;
-                        }
-                        const gstRate = found.gst_rate ?? 18;
-                        const total = Math.round(basePrice * (1 + gstRate / 100) * 100) / 100;
-                        set("amount_paid", total);
-                      }
-                    }
-                  }}>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>) : null
-            }
             <div className="form-group">
               <label className="form-label">Status</label>
               <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
@@ -624,6 +649,80 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
   );
 }
 
+/* ─── View Member Detail Modal (mobile) ───────────── */
+function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCancel, onDelete }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title" style={{ marginBottom: 16 }}>Member Details</div>
+
+        {/* ID + Status */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--accent)",
+            fontWeight: 700, background: "var(--accent-dim)", padding: "3px 10px", borderRadius: 6
+          }}>
+            {m.member_id_display || `M${String(m.id).padStart(4, "0")}`}
+          </span>
+          <span className={`badge ${{ active: "badge-green", expired: "badge-red", cancelled: "badge-gray", paused: "badge-yellow" }[m.status] || "badge-gray"}`}>
+            {m.status}
+          </span>
+        </div>
+
+        {/* Core info */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px", marginBottom: 16 }}>
+          {[
+            { label: "Name", val: m.name },
+            { label: "Phone", val: m.phone || "—" },
+            { label: "Email", val: m.email || "—" },
+            { label: "Gender", val: m.gender || "—" },
+            { label: "Plan", val: m.plan_name || "No Plan" },
+            { label: "Plan Type", val: m.plan_type || "—" },
+            { label: "Renewal", val: m.renewal_date || "—" },
+            { label: "Days Left", val: m.days_until_expiry != null ? `${m.days_until_expiry}d` : "—" },
+            { label: "Total Paid", val: `₹${Number(m.total_paid || 0).toLocaleString("en-IN")}` },
+            { label: "Balance Due", val: (m.balance_due || 0) > 0 ? `₹${Number(m.balance_due).toLocaleString("en-IN")}` : "None" },
+          ].map(({ label, val }) => (
+            <div key={label}>
+              <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 13, color: "var(--text1)", fontWeight: 500 }}>{val}</div>
+            </div>
+          ))}
+          {m.diet_name && (
+            <div style={{ gridColumn: "span 2" }}>
+              <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 2 }}>Diet Plan</div>
+              <div style={{ fontSize: 13, color: "var(--teal)" }}>🥗 {m.diet_name}</div>
+            </div>
+          )}
+          {m.notes && (
+            <div style={{ gridColumn: "span 2" }}>
+              <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 2 }}>Notes</div>
+              <div style={{ fontSize: 12, color: "var(--text2)" }}>{m.notes}</div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-sm btn-secondary" onClick={onEdit}>Edit</button>
+          <button className="btn btn-sm" style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }} onClick={onRenew}>Renew</button>
+          <button className="btn btn-sm" style={{ background: "rgba(77,166,255,.12)", color: "var(--info)" }} onClick={onPayments}>
+            Payments{(m.balance_due || 0) > 0 ? " ⚠" : ""}
+          </button>
+          {m.status !== "cancelled" && (
+            <button className="btn btn-sm btn-danger" onClick={onCancel}>Cancel</button>
+          )}
+          <button className="btn btn-sm" style={{ background: "rgba(255,91,91,.15)", color: "var(--danger)", border: "1px solid rgba(255,91,91,.3)" }} onClick={onDelete}>
+            🗑 Delete
+          </button>
+        </div>
+
+        <button className="btn btn-secondary" style={{ width: "100%", marginTop: 14 }} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main page ────────────────────────────────────── */
 export default function Members() {
   const [members, setMembers] = useState([]);
@@ -641,6 +740,8 @@ export default function Members() {
   const [planFilter, setPlanFilter] = useState("");           // plan id filter
   const [balanceFilter, setBalanceFilter] = useState("");           // has_balance | no_balance | ""
   const [expiringDays, setExpiringDays] = useState("");           // number string | ""
+  const [confirmState, setConfirmState] = useState(null);
+  const [viewMember, setViewMember] = useState(null);
 
 
   useEffect(() => {
@@ -697,30 +798,48 @@ export default function Members() {
     }
   };
 
-  const cancelMember = async (m) => {
-    if (!confirm(`Cancel membership for ${m.name}?`)) return;
-    try {
-      await api.post(`/members/list/${m.id}/cancel/`, { reason: "Admin cancelled" });
-      toast.success("Member cancelled");
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to cancel member");
-    }
+  const cancelMember = (m) => {
+    setConfirmState({
+      title: "Cancel Membership",
+      message: `Cancel membership for ${m.name}?`,
+      confirmText: "Cancel Membership",
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.post(`/members/list/${m.id}/cancel/`, { reason: "Admin cancelled" });
+          toast.success("Member cancelled");
+          load();
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Failed to cancel member");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
   };
 
-  const deleteMember = async (m) => {
-    if (!confirm(`PERMANENTLY DELETE ${m.name}? This cannot be undone and removes all payment history.`)) return;
-    try {
-      await api.delete(`/members/list/${m.id}/`);
-      toast.success("Member deleted permanently");
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to delete member");
-    }
+  const deleteMember = (m) => {
+    setConfirmState({
+      title: "Delete Member",
+      message: `Permanently delete ${m.name}? This cannot be undone and removes all payment history.`,
+      confirmText: "Delete Permanently",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.delete(`/members/list/${m.id}/`);
+          toast.success("Member deleted permanently");
+          load();
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Failed to delete member");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
   };
 
   return (
     <div>
+      {confirmState && <ConfirmModal {...confirmState} />}
       <div className="page-header">
         <div>
           <div className="page-title">Members</div>
@@ -812,113 +931,150 @@ export default function Members() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="table-wrap">
-          <table>
-            <thead><tr>
-              <th>ID</th><th>Member</th><th>Phone</th><th>Plan</th>
-              <th>Renewal</th><th>Days Left</th>
-              <th>Paid</th><th>Balance</th>
-              <th>Status</th><th>Actions</th>
-            </tr></thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>Loading…</td></tr>
-              ) : members.length === 0 ? (
-                <tr><td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>No members found</td></tr>
-              ) : members.map(m => (
-                <tr key={m.id}>
-                  <td>
-                    <span style={{
-                      fontFamily: "var(--font-mono)", fontSize: 12,
-                      color: "var(--accent)", fontWeight: 700,
-                      background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 6
-                    }}>
-                      {m.member_id_display || `M${String(m.id).padStart(4, "0")}`}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{m.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--text3)" }}>{m.email}</div>
-                  </td>
-                  <td style={{ color: "var(--text2)" }}>{m.phone}</td>
-                  <td style={{ fontSize: 12 }}>
-                    <div>{m.plan_name || <span style={{ color: "var(--text3)" }}>No Plan</span>}</div>
-                    {m.diet_name && (
-                      <div style={{ fontSize: 11, color: "var(--teal)", marginTop: 2 }}>
-                        🥗 {m.diet_name}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{
-                    fontSize: 12,
-                    color: (m.days_until_expiry ?? 99) <= 0 ? "var(--danger)"
-                      : (m.days_until_expiry ?? 99) <= 3 ? "var(--danger)"
-                        : (m.days_until_expiry ?? 99) <= 7 ? "var(--warn)" : "var(--text2)"
-                  }}>
-                    {m.renewal_date || "—"}
-                  </td>
-                  <td>
-                    {m.days_until_expiry != null ? (() => {
-                      const d = m.days_until_expiry;
-                      if (d < 0) return <span className="badge badge-red">{d}d</span>;
-                      if (d === 0) return <span className="badge badge-red">Today</span>;
-                      if (d <= 3) return <span className="badge badge-red">{d}d</span>;
-                      if (d <= 7) return <span className="badge badge-yellow">{d}d</span>;
-                      return <span className="badge badge-blue">{d}d</span>;
-                    })() : "—"}
-                  </td>
-                  <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)" }}>
-                    ₹{Number(m.total_paid || 0).toLocaleString("en-IN")}
-                  </td>
-                  <td>
-                    {(m.balance_due || 0) > 0
-                      ? <span className="badge badge-yellow">
-                        ₹{Number(m.balance_due).toLocaleString("en-IN")}
-                      </span>
-                      : <span style={{ fontSize: 12, color: "var(--text3)" }}>—</span>
-                    }
-                  </td>
-                  <td>{statusBadge(m.status)}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                      <button className="btn btn-sm btn-secondary"
-                        onClick={() => { setSelected(m); setModal("edit"); }}>Edit</button>
-                      <button className="btn btn-sm"
-                        style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }}
-                        onClick={() => { setSelected(m); setModal("renew"); }}>Renew</button>
-                      <button className="btn btn-sm"
-                        style={{ background: "rgba(77,166,255,.12)", color: "var(--info)" }}
-                        onClick={() => { setSelected(m); setModal("payments"); }}>
-                        Payments{(m.balance_due || 0) > 0 ? " ⚠" : ""}
-                      </button>
-                      {m.status !== "cancelled" &&
-                        <button className="btn btn-sm btn-danger"
-                          onClick={() => cancelMember(m)}>Cancel</button>}
-                      <button className="btn btn-sm"
-                        style={{
-                          background: "rgba(255,91,91,.15)", color: "var(--danger)",
-                          border: "1px solid rgba(255,91,91,.3)"
-                        }}
-                        onClick={() => deleteMember(m)}>
-                        🗑 Delete
-                      </button>
-                    </div>
-                  </td>
-
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* ── Mobile card list (visible only on small screens) ── */}
+      <div className="members-mobile-list">
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>Loading…</div>
+        ) : members.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>No members found</div>
+        ) : members.map(m => (
+          <div key={m.id} className="member-mobile-card">
+            <div className="member-mobile-card__left">
+              <span className="member-mobile-card__id">
+                {m.member_id_display || `M${String(m.id).padStart(4, "0")}`}
+              </span>
+              <span className="member-mobile-card__name">{m.name}</span>
+              <span className={`badge ${{ active: "badge-green", expired: "badge-red", cancelled: "badge-gray", paused: "badge-yellow" }[m.status] || "badge-gray"}`} style={{ fontSize: 11 }}>
+                {m.status}
+              </span>
+            </div>
+            <button
+              className="btn btn-sm"
+              style={{ background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid rgba(168,255,87,.3)", whiteSpace: "nowrap" }}
+              onClick={() => setViewMember(m)}>
+              View Member
+            </button>
+          </div>
+        ))}
         <div className="members-pagination">
-          <span style={{ fontSize: 12, color: "var(--text3)" }}>{count} total members</span>
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>{count} total</span>
           <div style={{ display: "flex", gap: 6 }}>
             <button className="btn btn-sm btn-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
             <button className="btn btn-sm btn-secondary" disabled={members.length < 20} onClick={() => setPage(p => p + 1)}>Next →</button>
           </div>
         </div>
       </div>
+
+      {/* ── Desktop table (hidden on small screens) ── */}
+      <div className="members-desktop-table">
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>ID</th><th>Member</th><th>Phone</th><th>Plan</th>
+                <th>Renewal</th><th>Days Left</th>
+                <th>Paid</th><th>Balance</th>
+                <th>Status</th><th>Actions</th>
+              </tr></thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>Loading…</td></tr>
+                ) : members.length === 0 ? (
+                  <tr><td colSpan={10} style={{ textAlign: "center", padding: 40, color: "var(--text3)" }}>No members found</td></tr>
+                ) : members.map(m => (
+                  <tr key={m.id}>
+                    <td>
+                      <span style={{
+                        fontFamily: "var(--font-mono)", fontSize: 12,
+                        color: "var(--accent)", fontWeight: 700,
+                        background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 6
+                      }}>
+                        {m.member_id_display || `M${String(m.id).padStart(4, "0")}`}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{m.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text3)" }}>{m.email}</div>
+                    </td>
+                    <td style={{ color: "var(--text2)" }}>{m.phone}</td>
+                    <td style={{ fontSize: 12 }}>
+                      <div>{m.plan_name || <span style={{ color: "var(--text3)" }}>No Plan</span>}</div>
+                      {m.diet_name && (
+                        <div style={{ fontSize: 11, color: "var(--teal)", marginTop: 2 }}>
+                          🥗 {m.diet_name}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{
+                      fontSize: 12,
+                      color: (m.days_until_expiry ?? 99) <= 0 ? "var(--danger)"
+                        : (m.days_until_expiry ?? 99) <= 3 ? "var(--danger)"
+                          : (m.days_until_expiry ?? 99) <= 7 ? "var(--warn)" : "var(--text2)"
+                    }}>
+                      {m.renewal_date || "—"}
+                    </td>
+                    <td>
+                      {m.days_until_expiry != null ? (() => {
+                        const d = m.days_until_expiry;
+                        if (d < 0) return <span className="badge badge-red">{d}d</span>;
+                        if (d === 0) return <span className="badge badge-red">Today</span>;
+                        if (d <= 3) return <span className="badge badge-red">{d}d</span>;
+                        if (d <= 7) return <span className="badge badge-yellow">{d}d</span>;
+                        return <span className="badge badge-blue">{d}d</span>;
+                      })() : "—"}
+                    </td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)" }}>
+                      ₹{Number(m.total_paid || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td>
+                      {(m.balance_due || 0) > 0
+                        ? <span className="badge badge-yellow">
+                          ₹{Number(m.balance_due).toLocaleString("en-IN")}
+                        </span>
+                        : <span style={{ fontSize: 12, color: "var(--text3)" }}>—</span>
+                      }
+                    </td>
+                    <td>{statusBadge(m.status)}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => { setSelected(m); setModal("edit"); }}>Edit</button>
+                        <button className="btn btn-sm"
+                          style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }}
+                          onClick={() => { setSelected(m); setModal("renew"); }}>Renew</button>
+                        <button className="btn btn-sm"
+                          style={{ background: "rgba(77,166,255,.12)", color: "var(--info)" }}
+                          onClick={() => { setSelected(m); setModal("payments"); }}>
+                          Payments{(m.balance_due || 0) > 0 ? " ⚠" : ""}
+                        </button>
+                        {m.status !== "cancelled" &&
+                          <button className="btn btn-sm btn-danger"
+                            onClick={() => cancelMember(m)}>Cancel</button>}
+                        <button className="btn btn-sm"
+                          style={{
+                            background: "rgba(255,91,91,.15)", color: "var(--danger)",
+                            border: "1px solid rgba(255,91,91,.3)"
+                          }}
+                          onClick={() => deleteMember(m)}>
+                          🗑 Delete
+                        </button>
+                      </div>
+                    </td>
+
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="members-pagination">
+            <span style={{ fontSize: 12, color: "var(--text3)" }}>{count} total members</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn btn-sm btn-secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+              <button className="btn btn-sm btn-secondary" disabled={members.length < 20} onClick={() => setPage(p => p + 1)}>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>{/* end members-desktop-table */}
 
       {modal === "add" && <MemberModal plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave} />}
       {modal === "edit" && selected && <MemberModal member={selected} plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave} />}
@@ -942,6 +1098,17 @@ export default function Members() {
         />
       )}
       {bill && <MemberBill bill={bill} onClose={() => setBill(null)} />}
+      {viewMember && (
+        <ViewMemberModal
+          member={viewMember}
+          onClose={() => setViewMember(null)}
+          onEdit={() => { setSelected(viewMember); setModal("edit"); setViewMember(null); }}
+          onRenew={() => { setSelected(viewMember); setModal("renew"); setViewMember(null); }}
+          onPayments={() => { setSelected(viewMember); setModal("payments"); setViewMember(null); }}
+          onCancel={() => { cancelMember(viewMember); setViewMember(null); }}
+          onDelete={() => { deleteMember(viewMember); setViewMember(null); }}
+        />
+      )}
     </div>
   );
 }

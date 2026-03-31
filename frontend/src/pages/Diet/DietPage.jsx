@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import CreatePlanModal from "./CreatePlanModal";
+import ConfirmModal from "../../components/ConfirmModal";
 import "./DietPage.css";
 import "../../styles/globals.css";
 import api from "../../api/axios";
@@ -12,6 +13,7 @@ const DietPage = () => {
     const [editPlan, setEditPlan] = useState(null);
     const [plans, setPlans] = useState([]);
     const [search, setSearch] = useState("");
+    const [confirmState, setConfirmState] = useState(null);
 
     const fetchPlans = async () => {
         try {
@@ -25,15 +27,24 @@ const DietPage = () => {
 
     useEffect(() => { fetchPlans(); }, []);
 
-    const handleDelete = async (plan) => {
-        if (!confirm(`Delete "${plan.name}"? This cannot be undone.`)) return;
-        try {
-            await api.delete(`/members/diet-plans/${plan.id}/`);
-            toast.success("Plan deleted");
-            fetchPlans();
-        } catch {
-            toast.error("Failed to delete plan");
-        }
+    const handleDelete = (plan) => {
+        setConfirmState({
+            title: "Delete Diet Plan",
+            message: `Delete "${plan.name}"? This cannot be undone.`,
+            confirmText: "Delete",
+            danger: true,
+            onConfirm: async () => {
+                setConfirmState(null);
+                try {
+                    await api.delete(`/members/diet-plans/${plan.id}/`);
+                    toast.success("Plan deleted");
+                    fetchPlans();
+                } catch {
+                    toast.error("Failed to delete plan");
+                }
+            },
+            onCancel: () => setConfirmState(null),
+        });
     };
 
     const handleEdit = (plan) => {
@@ -64,6 +75,7 @@ const DietPage = () => {
 
     return (
         <div className="diet-page">
+            {confirmState && <ConfirmModal {...confirmState} />}
 
             {/* HEADER */}
             <div className="diet-header">

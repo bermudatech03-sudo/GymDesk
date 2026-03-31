@@ -3,6 +3,30 @@ import { useAuth } from "../hooks/useAuth";
 import { useState } from "react";
 import "./Layout.css";
 
+function LogoutConfirmModal({ onConfirm, onCancel }) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⏏</div>
+          <div className="modal-title" style={{ marginBottom: 8 }}>Confirm Logout</div>
+          <p style={{ color: "var(--text2)", fontSize: 14, margin: "0 0 24px" }}>
+            Are you sure you want to logout?
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <button className="btn btn-secondary" style={{ minWidth: 100 }} onClick={onCancel}>
+              Cancel
+            </button>
+            <button className="btn btn-danger" style={{ minWidth: 100 }} onClick={onConfirm}>
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV = [
   { to:"/dashboard",     icon:"⬡",  label:"Dashboard" },
   { to:"/members",       icon:"◈",  label:"Members" },
@@ -22,11 +46,19 @@ export default function Layout() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const handleLogout = () => { logout(); navigate("/login"); };
+  const handleLogout = () => setShowLogoutConfirm(true);
+  const confirmLogout = () => { logout(); navigate("/login"); };
 
   return (
     <div className={`layout ${collapsed ? "layout--collapsed" : ""}`}>
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onConfirm={confirmLogout}
+          onCancel={() => setShowLogoutConfirm(false)}
+        />
+      )}
       {/* Mobile overlay */}
       {mobileOpen && (
         <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />

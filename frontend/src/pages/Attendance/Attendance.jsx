@@ -88,7 +88,7 @@ export default function Attendance() {
       </div>
 
       {/* ── Controls ── */}
-      <div style={{
+      <div className="attendance-controls" style={{
         display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap",
         background:"var(--surface)", border:"1px solid var(--border)",
         borderRadius:"var(--radius)", padding:"14px 18px", marginBottom:16,
@@ -137,7 +137,7 @@ export default function Attendance() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div style={{
+      <div className="attendance-stat-grid" style={{
         display:"grid",
         gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",
         gap:10, marginBottom:16,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
+import ConfirmModal from "../../components/ConfirmModal";
 
 const CONDITIONS = { excellent:"badge-green", good:"badge-teal", fair:"badge-yellow", poor:"badge-red", out_of_service:"badge-gray" };
 const CATEGORIES = ["cardio","strength","flexibility","free_weights","accessories","other"];
@@ -68,6 +69,7 @@ export default function Equipment() {
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState({});
+  const [confirmState, setConfirmState] = useState(null);
 
   useEffect(() => { document.getElementById("page-title").textContent = "Equipment"; }, []);
 
@@ -87,17 +89,27 @@ export default function Equipment() {
 
   useEffect(() => { load(); }, [load]);
 
-  const deactivate = async (eq) => {
-    if (!confirm(`Remove ${eq.name}?`)) return;
-    await api.patch(`/equipment/list/${eq.id}/`, { is_active: false });
-    toast.success("Equipment removed");
-    load();
+  const deactivate = (eq) => {
+    setConfirmState({
+      title: "Remove Equipment",
+      message: `Remove ${eq.name}?`,
+      confirmText: "Remove",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        await api.patch(`/equipment/list/${eq.id}/`, { is_active: false });
+        toast.success("Equipment removed");
+        load();
+      },
+      onCancel: () => setConfirmState(null),
+    });
   };
 
   const today = new Date().toISOString().split("T")[0];
 
   return (
     <div>
+      {confirmState && <ConfirmModal {...confirmState} />}
       <div className="page-header">
         <div>
           <div className="page-title">Equipment</div>

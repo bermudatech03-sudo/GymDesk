@@ -250,12 +250,16 @@ class MemberViewSet(viewsets.ModelViewSet):
         if d.get("diet_id"):
             diet = DietPlan.objects.filter(pk=d["diet_id"]).first()
 
+        plan_type = d.get("plan_type", "basic")
+
         member = Member.objects.create(
             name=d["name"], phone=d["phone"],
             email=d.get("email",""), gender=d.get("gender",""),
             address=d.get("address",""), plan=plan, diet=diet,
             join_date=join, renewal_date=renew,
-            status=d.get("status","active"), notes=d.get("notes",""),personal_trainer=d.get("personal_trainer", False)
+            status=d.get("status","active"), notes=d.get("notes",""),
+            plan_type=plan_type,
+            personal_trainer=d.get("personal_trainer", False),
         )
 
         amount_paid = Decimal(str(d.get("amount_paid", 0)))
@@ -264,9 +268,9 @@ class MemberViewSet(viewsets.ModelViewSet):
         if plan:
             pt_fee = Decimal("0")
             if d.get("personal_trainer"):
-                if plan.plans == "standard":
+                if plan_type == "standard":
                     pt_fee = Decimal("500")
-                elif plan.plans == "premium":
+                elif plan_type == "premium":
                     pt_fee = Decimal("1000")
             base, gst_amt, total, rate = _calc_gst(plan.price + pt_fee)
             inv_no = _invoice_number(member.id, join)
@@ -438,6 +442,14 @@ class MemberAttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = MemberAttendanceSerializer
     filterset_fields = ["member","date"]
     ordering_fields  = ["date","check_in"]
+
+    def list(self, request, *args, **kwargs):
+        try:
+            from apps.staff.views import _auto_mark_absent_members
+            _auto_mark_absent_members()
+        except Exception:
+            pass
+        return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def today(self, request):

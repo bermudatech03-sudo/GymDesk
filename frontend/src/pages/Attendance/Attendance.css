@@ -2,6 +2,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  width: 100%;
+  overflow-x: hidden;
 }
 .attendance-table-header {
   display: flex;
@@ -88,4 +90,27 @@
   background: rgba(168, 85, 247, .15);
   color: #a855f7;
   border: 1px solid rgba(168, 85, 247, .3);
+}
+
+/* ── Mobile responsiveness ── */
+@media (max-width: 640px) {
+  .attendance-grid { grid-template-columns: 1fr; }
+
+  /* Controls bar: stack items vertically */
+  .attendance-controls {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  /* Kiosk button takes full width on mobile */
+  .attendance-controls .btn {
+    margin-left: 0 !important;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Stat cards: 2 per row on phone */
+  .attendance-stat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }

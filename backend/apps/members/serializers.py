@@ -70,7 +70,6 @@ class MemberSerializer(serializers.ModelSerializer):
     plan_name          = serializers.CharField(source="plan.name",  read_only=True)
     plan_price_val     = serializers.DecimalField(source="plan.price",
                              max_digits=10, decimal_places=2, read_only=True)
-    plan_type          = serializers.CharField(source="plan.plans", read_only=True)
     plan_allows_trainer = serializers.SerializerMethodField()
     diet_id            = serializers.IntegerField(source="diet.id",  read_only=True, allow_null=True)
     diet_name          = serializers.CharField(source="diet.name",  read_only=True, allow_null=True)
@@ -88,9 +87,7 @@ class MemberSerializer(serializers.ModelSerializer):
     def get_balance_due(self, obj):       return float(obj.balance_due())
     def get_member_id_display(self, obj): return obj.display_id()
     def get_plan_allows_trainer(self, obj):
-        if obj.plan and obj.plan.plans in ("standard", "premium") and obj.plan.personal_trainer:
-            return obj.personal_trainer
-        return False
+        return obj.plan_type in ("standard", "premium") and obj.personal_trainer
 
 
 class MemberAttendanceSerializer(serializers.ModelSerializer):
@@ -119,6 +116,7 @@ class EnrollSerializer(serializers.Serializer):
                        required=False, default=0)
     notes             = serializers.CharField(required=False, allow_blank=True)
     status            = serializers.CharField(required=False, default="active")
+    plan_type         = serializers.CharField(required=False, default="basic")
     personal_trainer  = serializers.BooleanField(required=False, default=False)
 
 

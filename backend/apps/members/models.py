@@ -5,24 +5,21 @@ from datetime import timedelta
 from decimal import Decimal
 
 class MembershipPlan(models.Model):
-    PLAN = [("basic","Basic"),("standard","Standard"),("premium","Premium")]
     name          = models.CharField(max_length=100)
     duration_days = models.PositiveIntegerField(default=30)
     price         = models.DecimalField(max_digits=10, decimal_places=2)
     description   = models.TextField(blank=True)
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
-    plans         = models.CharField(max_length=10, choices=PLAN, default="basic")
-    personal_trainer = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.name} ({self.duration_days}d — ₹{self.price}) {self.plans} "
+        return f"{self.name} ({self.duration_days}d — ₹{self.price})"
 
 class Member(models.Model):
     GENDER = [("Male","Male"),("Female","Female"),("Other","Other")]
     STATUS = [("active","Active"),("expired","Expired"),("cancelled","Cancelled"),("paused","Paused")]
     FOODTYPE = [("veg","Vegetarian"),("nonveg","Non-Vegetarian"),("vegan","Vegan"),("other","Other")]
-
+    PLANTYPE = [("basic","Basic"),("standard","Standard"),("premium","Premium")]
     name         = models.CharField(max_length=150)
     phone        = models.CharField(max_length=15, unique=True)
     email        = models.EmailField(blank=True)
@@ -33,6 +30,7 @@ class Member(models.Model):
     photo_url    = models.URLField(blank=True)
     foodType     = models.CharField(max_length=10, choices=FOODTYPE, default="veg")
     plan         = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
+    plan_type     = models.CharField(max_length=20, choices=PLANTYPE, default="basic")
     diet         = models.ForeignKey('DietPlan', on_delete=models.SET_NULL, null=True, blank=True)
     join_date    = models.DateField(default=timezone.localdate)
     renewal_date = models.DateField(null=True, blank=True)
@@ -80,9 +78,9 @@ class Member(models.Model):
         if not self.plan:
             return Decimal("0")
         if self.personal_trainer:
-            if self.plan.plans == "standard":
+            if self.plan_type == "standard":
                 return self.plan.price + Decimal("500")
-            elif self.plan.plans == "premium":
+            elif self.plan_type == "premium":
                 return self.plan.price + Decimal("1000")
         return self.plan.price
 

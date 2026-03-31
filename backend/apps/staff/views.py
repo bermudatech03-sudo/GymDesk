@@ -448,6 +448,13 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     filterset_fields = ["staff", "date", "status"]
     ordering_fields  = ["date"]
 
+    def list(self, request, *args, **kwargs):
+        try:
+            _auto_mark_absent_staff()
+        except Exception:
+            pass
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
     def today(self, request):
         today = timezone.localdate()

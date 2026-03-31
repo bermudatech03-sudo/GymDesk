@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
+import ConfirmModal from "../../components/ConfirmModal";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -230,6 +231,7 @@ export default function TrainerAssignments() {
   const [modal, setModal] = useState(null); // null | "new" | assignment obj
   const [filterMember, setFilterMember] = useState("");
   const [filterTrainer, setFilterTrainer] = useState("");
+  const [confirmState, setConfirmState] = useState(null);
 
   // Eligible members for the filter dropdown (all plans including non-eligible for admin visibility)
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
@@ -265,19 +267,29 @@ export default function TrainerAssignments() {
     }).catch(() => toast.error("Failed to load reference data."));
   }, []);
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this trainer assignment?")) return;
-    try {
-      await api.delete(`/members/assign-trainer/${id}/`);
-      toast.success("Assignment deleted.");
-      load();
-    } catch {
-      toast.error("Delete failed.");
-    }
+  const handleDelete = (id) => {
+    setConfirmState({
+      title: "Delete Assignment",
+      message: "Delete this trainer assignment?",
+      confirmText: "Delete",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.delete(`/members/assign-trainer/${id}/`);
+          toast.success("Assignment deleted.");
+          load();
+        } catch {
+          toast.error("Delete failed.");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
   };
 
   return (
     <div className="page">
+      {confirmState && <ConfirmModal {...confirmState} />}
       <div className="page-header">
         <div>
           <h1 className="page-title">Trainer Assignments</h1>

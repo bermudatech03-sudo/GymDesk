@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
 import "./Plans.css";
+import ConfirmModal from "../../components/ConfirmModal";
 
 function PlanModal({ plan, onClose, onSave }) {
   const [form, setForm] = useState(
     plan
       ? { ...plan }
-      : { name: "", duration_days: 30, price: "", description: "", is_active: true, plans: "basic", personal_trainer: false }
+      : { name: "", duration_days: 30, price: "", description: "", is_active: true }
   );
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -28,14 +29,6 @@ function PlanModal({ plan, onClose, onSave }) {
       toast.error(err.response?.data?.detail || "Something went wrong");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handlePlanTypeChange = (e) => {
-    const value = e.target.value;
-    set("plans", value);
-    if (value !== "standard" && value !== "premium") {
-      set("personal_trainer", false);
     }
   };
 
@@ -109,33 +102,6 @@ function PlanModal({ plan, onClose, onSave }) {
             </select>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Plan Type</label>
-            <select
-              className="form-input"
-              value={form.plans}
-              onChange={handlePlanTypeChange}
-            >
-              <option value="basic">Basic Plan</option>
-              <option value="standard">Standard Plan</option>
-              <option value="premium">Premium Plan</option>
-            </select>
-          </div>
-
-          {(form.plans === "standard" || form.plans === "premium") && (
-            <div className="form-group">
-              <label className="form-label">Personal Trainer</label>
-              <select
-                className="form-input"
-                value={form.personal_trainer ? "true" : "false"}
-                onChange={e => set("personal_trainer", e.target.value === "true")}
-              >
-                <option value="false">Not Required</option>
-                <option value="true">Required</option>
-              </select>
-            </div>
-          )}
-
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
@@ -155,6 +121,7 @@ function PlanModal({ plan, onClose, onSave }) {
     const [loading, setLoading] = useState(true);
     const [modal, setModal] = useState(false);
     const [selected, setSelected] = useState(null);
+    const [confirmState, setConfirmState] = useState(null);
 
     useEffect(() => {
       document.getElementById("page-title").textContent = "Membership Plans";
@@ -172,15 +139,24 @@ function PlanModal({ plan, onClose, onSave }) {
 
     useEffect(() => { load(); }, [load]);
 
-    const deletePlan = async (plan) => {
-      if (!confirm(`Delete "${plan.name}"? Members using this plan will lose their plan reference.`)) return;
-      try {
-        await api.delete(`/members/plans/${plan.id}/`);
-        toast.success("Plan deleted");
-        load();
-      } catch {
-        toast.error("Cannot delete — members may be linked to this plan");
-      }
+    const deletePlan = (plan) => {
+      setConfirmState({
+        title: "Delete Plan",
+        message: `Delete "${plan.name}"? Members using this plan will lose their plan reference.`,
+        confirmText: "Delete",
+        danger: true,
+        onConfirm: async () => {
+          setConfirmState(null);
+          try {
+            await api.delete(`/members/plans/${plan.id}/`);
+            toast.success("Plan deleted");
+            load();
+          } catch {
+            toast.error("Cannot delete — members may be linked to this plan");
+          }
+        },
+        onCancel: () => setConfirmState(null),
+      });
     };
 
     const toggleActive = async (plan) => {
@@ -196,6 +172,7 @@ function PlanModal({ plan, onClose, onSave }) {
 
     return (
       <div>
+        {confirmState && <ConfirmModal {...confirmState} />}
         <div className="page-header">
           <div>
             <div className="page-title">Membership Plans</div>
@@ -255,14 +232,6 @@ function PlanModal({ plan, onClose, onSave }) {
                     <button className="btn btn-sm btn-danger" onClick={() => deletePlan(p)}>
                       Delete
                     </button>
-                  </div>
-                  <div className="plan-card__actions">
-                    <span className="plan-card__id">Plan Type: {p.plans}</span>
-                    {(p.plans === "standard" || p.plans === "premium") && (
-                      <span className="plan-card__id" style={{ marginLeft: 8 }}>
-                        Trainer: {p.personal_trainer ? "Required" : "Not Required"}
-                      </span>
-                    )}
                   </div>
                 </div>
 

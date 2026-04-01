@@ -133,3 +133,8 @@ GYM_ADDRESS = "Chennai, Tamil Nadu — India"
 GYM_PHONE   = "+91 97907 28732"
 GYM_EMAIL   = "bermudatech@gmail.com"
 GYM_GSTIN   = "33AAAAA0000A1Z5"
+
+META_WHATSAPP_ACCESS_TOKEN    = config("META_WHATSAPP_ACCESS_TOKEN", default="")
+META_WHATSAPP_PHONE_NUMBER_ID = config("META_WHATSAPP_PHONE_NUMBER_ID", default="")
+
+

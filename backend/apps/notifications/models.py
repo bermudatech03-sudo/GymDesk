@@ -1,22 +1,20 @@
-
 from django.db import models
-from django.utils import timezone
+
 
 class Notification(models.Model):
-    CHANNEL = [("email","Email"),("whatsapp","WhatsApp"),("sms","SMS"),("in_app","In-App")]
-    STATUS  = [("sent","Sent"),("failed","Failed"),("pending","Pending")]
+    CHANNEL = [("whatsapp", "WhatsApp")]
+    STATUS  = [("sent", "Sent"), ("failed", "Failed"), ("pending", "Pending")]
     TRIGGER = [
-        ("renewal_remind","Renewal Reminder"),
-        ("renewal_confirm","Renewal Confirmed"),
-        ("enrollment","New Enrollment"),
-        ("expiry","Membership Expired"),
-        ("manual","Manual"),
+        ("renewal_remind", "Renewal Reminder"),
+        ("renewal_confirm", "Renewal Confirmed"),
+        ("enrollment",      "New Enrollment"),
+        ("expiry",          "Membership Expired"),
+        ("manual",          "Manual"),
     ]
 
     recipient_name  = models.CharField(max_length=150)
-    recipient_phone = models.CharField(max_length=15, blank=True)
-    recipient_email = models.EmailField(blank=True)
-    channel         = models.CharField(max_length=10, choices=CHANNEL, default="email")
+    recipient_phone = models.CharField(max_length=20, blank=True)
+    channel         = models.CharField(max_length=10, choices=CHANNEL, default="whatsapp")
     trigger_type    = models.CharField(max_length=20, choices=TRIGGER, default="manual")
     message         = models.TextField()
     status          = models.CharField(max_length=10, choices=STATUS, default="pending")

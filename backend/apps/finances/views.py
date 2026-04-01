@@ -106,27 +106,26 @@ class MonthlyReportView(APIView):
             "gstin":   getattr(django_settings, "GYM_GSTIN",   ""),
         }
 
-        def _parse_plan_total(notes):
+        def _parse_note_field(notes, key):
             """
-            Extracts the plan_total value embedded in the notes field.
-            Format: '... | plan_total:14160.00'
-            Returns float or None if not present (e.g. non-membership income).
+            Extracts a keyed value embedded in the notes field.
+            Format: '... | key:value'
+            Returns the string value or None if not present.
             """
             if not notes:
                 return None
             for part in notes.split("|"):
                 part = part.strip()
-                if part.startswith("plan_total:"):
-                    try:
-                        return float(part.split(":", 1)[1].strip())
-                    except (ValueError, IndexError):
-                        return None
+                if part.startswith(f"{key}:"):
+                    return part.split(":", 1)[1].strip()
             return None
 
-        # Serialize incomes and attach plan_total per row
+        # Serialize incomes and attach plan_total + mode_of_payment per row
         income_data = IncomeSerializer(incomes, many=True).data
         for i, income_obj in enumerate(incomes):
-            income_data[i]["plan_total"] = _parse_plan_total(income_obj.notes)
+            pt = _parse_note_field(income_obj.notes, "plan_total")
+            income_data[i]["plan_total"] = float(pt) if pt is not None else None
+            income_data[i]["mode_of_payment"] = _parse_note_field(income_obj.notes, "mode") or "cash"
 
         return Response({
             "gym":           gym,

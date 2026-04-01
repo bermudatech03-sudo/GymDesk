@@ -12,7 +12,7 @@
   width: 96vw;
   max-height: 90vh;
   overflow-y: auto;
-  overflow-x: hidden;           /* FIX: prevent horizontal scroll on modal */
+  overflow-x: clip;             /* clip own overflow without blocking inner scroll containers */
   padding: 0;
   background: #fff;
 }
@@ -42,10 +42,10 @@
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 13px;
   line-height: 1.5;
-  /* FIX: contain everything, no bleed-out */
+  /* contain everything, no bleed-out */
   width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ── Report header band ─────────────────────────────── */
@@ -226,16 +226,17 @@
 }
 
 /* ── Income table — fixed column widths ─────────────── */
-/* 9 columns: Date · Invoice · Source · Category · Base · GST% · GST Amt · Plan Total · Paid Now */
-.income-table col.col-date  { width: 8%;  }
-.income-table col.col-inv   { width: 10%; }
-.income-table col.col-src   { width: 16%; }
-.income-table col.col-cat   { width: 12%; }
-.income-table col.col-base  { width: 11%; }
-.income-table col.col-gp    { width: 6%;  }
-.income-table col.col-gamt  { width: 11%; }
-.income-table col.col-plan  { width: 13%; }
-.income-table col.col-paid  { width: 13%; }
+/* 10 columns: Date · Invoice · Source · Category · Base · GST% · GST Amt · Plan Total · Paid Now · Mode */
+.income-table col.col-date  { width: 7%;  }
+.income-table col.col-inv   { width: 9%;  }
+.income-table col.col-src   { width: 14%; }
+.income-table col.col-cat   { width: 11%; }
+.income-table col.col-base  { width: 10%; }
+.income-table col.col-gp    { width: 5%;  }
+.income-table col.col-gamt  { width: 10%; }
+.income-table col.col-plan  { width: 12%; }
+.income-table col.col-paid  { width: 11%; }
+.income-table col.col-mode  { width: 11%; }
 
 /* ── Expense table — fixed column widths ────────────── */
 /* 5 columns: Date · Description · Category · Vendor · Amount */

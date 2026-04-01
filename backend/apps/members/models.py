@@ -216,6 +216,12 @@ class InstallmentPayment(models.Model):
         ("renewal",    "Renewal"),
         ("balance",    "Balance Payment"),
     ]
+    MODE_OF_PAYMENT = [
+        ("cash", "Cash"),
+        ("card", "Card"),
+        ("upi",  "UPI"),
+        ("other", "Other"),
+    ]
 
     payment        = models.ForeignKey(MemberPayment, on_delete=models.CASCADE,
                                        related_name="installment_payments")
@@ -228,12 +234,14 @@ class InstallmentPayment(models.Model):
     paid_date      = models.DateField(default=timezone.localdate)
     notes          = models.TextField(blank=True)
     created_at     = models.DateTimeField(auto_now_add=True)
- 
+    mode_of_payment = models.CharField(max_length=10, choices=MODE_OF_PAYMENT, default="cash")
+
+
     class Meta:
         ordering = ["paid_date", "created_at"]
  
     def __str__(self):
-        return f"{self.member.name} — ₹{self.amount} on {self.paid_date}"
+        return f"{self.member.name} — ₹{self.amount} on {self.paid_date} and mode of payment is {self.mode_of_payment}"
     
 
 class TrainerAssignment(models.Model):

@@ -138,6 +138,8 @@ input, select, textarea { font-family:var(--font-body); }
 .badge-blue    { background: rgba(77,166,255,0.12);  color: #4da6ff; }
 .badge-gray    { background: rgba(144,144,160,0.12); color: #9090a0; }
 .badge-teal    { background: rgba(45,255,195,0.12);  color: #2dffc3; }
+.badge-orange  { background: rgba(249,115,22,0.12);  color: #f97316; }
+.badge-purple  { background: rgba(168,85,247,0.12);  color: #a855f7; }
 
 /* Table */
 .table-wrap { overflow-x: auto; }

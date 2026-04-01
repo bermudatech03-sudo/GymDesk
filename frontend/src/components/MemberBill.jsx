@@ -154,6 +154,7 @@ function hCycleCard(inv, rows, idx) {
         <td style="color:#1a5a9a;font-weight:600">${typeLabel}</td>
         <td style="color:#1a7a00;font-weight:700">₹${fmt(inst.amount)}</td>
         <td style="color:${balColor}">₹${fmt(inst.balance_after)}</td>
+        <td style="text-align:center;text-transform:uppercase;font-size:11px;font-weight:600;color:#555">${(inst.mode_of_payment || "cash").toUpperCase()}</td>
         ${ri === 0 ? `<td rowspan="${installments.length}" style="text-align:center;vertical-align:middle">
           ${hStatusBadge(first.status)}
         </td>` : ""}
@@ -166,6 +167,7 @@ function hCycleCard(inv, rows, idx) {
       <td style="color:#1a5a9a;font-weight:600">${isRenewal ? "Renewal" : "Enrollment"}</td>
       <td style="color:#1a7a00;font-weight:700">₹${fmt(first.amount_paid)}</td>
       <td style="color:${fmtF(first.balance) > 0 ? "#cc5500" : "#777"}">₹${fmt(first.balance)}</td>
+      <td style="text-align:center;text-transform:uppercase;font-size:11px;font-weight:600;color:#555">${(first.mode_of_payment || "CASH").toUpperCase()}</td>
       <td style="text-align:center">${hStatusBadge(first.status)}</td>
     </tr>`;
   }
@@ -193,7 +195,7 @@ function hCycleCard(inv, rows, idx) {
     <table class="ctable">
       <thead><tr>
         <th>Date</th><th>Type</th>
-        <th>Amount Paid</th><th>Balance After</th><th>Status</th>
+        <th>Amount Paid</th><th>Balance After</th><th>Mode</th><th>Status</th>
       </tr></thead>
       <tbody>${instRows}</tbody>
     </table>
@@ -305,6 +307,7 @@ export default function MemberBill({ bill, onClose }) {
         <td style="color:#1a5a9a;font-weight:600">${typeLabel}</td>
         <td style="color:#1a7a00;font-weight:700">₹${fmt(inst.amount)}</td>
         <td style="color:${fmtF(inst.balance_after) > 0 ? "#cc5500" : "#777"}">₹${fmt(inst.balance_after)}</td>
+        <td style="text-align:center;text-transform:uppercase;font-size:11px;font-weight:600;color:#555">${(inst.mode_of_payment || "cash").toUpperCase()}</td>
       </tr>`;
     }).join("");
 
@@ -317,6 +320,7 @@ export default function MemberBill({ bill, onClose }) {
           <th style="text-align:left">Type</th>
           <th>Amount Paid</th>
           <th>Balance After</th>
+          <th>Mode</th>
         </tr></thead>
         <tbody>${instRowsHTML}</tbody>
       </table>
@@ -447,10 +451,10 @@ export default function MemberBill({ bill, onClose }) {
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead>
             <tr style={{background:"var(--surface)"}}>
-              {["Date","Type","Amount Paid","Balance After"].map((h,i) => (
+              {["Date","Type","Amount Paid","Balance After","Mode"].map((h,i) => (
                 <th key={h} style={{
                   padding:"5px 10px", fontWeight:700, color:"var(--text3)", fontSize:11,
-                  textAlign: i >= 2 ? "right" : "left"
+                  textAlign: i >= 2 ? "center" : "left"
                 }}>{h}</th>
               ))}
             </tr>
@@ -471,6 +475,9 @@ export default function MemberBill({ bill, onClose }) {
                     color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--text3)"}}>
                     ₹{fmt(inst.balance_after)}
                   </td>
+                  <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                    {(inst.mode_of_payment || "cash").toUpperCase()}
+                  </td>
                 </tr>
               );
             }) : rows.map(r => (
@@ -485,6 +492,9 @@ export default function MemberBill({ bill, onClose }) {
                 <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",
                   color: fmtF(r.balance) > 0 ? "var(--warn)" : "var(--text3)"}}>
                   ₹{fmt(r.balance)}
+                </td>
+                <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                  {(r.mode_of_payment || "CASH")}
                 </td>
               </tr>
             ))}
@@ -624,10 +634,10 @@ export default function MemberBill({ bill, onClose }) {
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                     <thead>
                       <tr style={{background:"var(--surface)"}}>
-                        {["Date","Type","Amount Paid","Balance After"].map((h,i) => (
+                        {["Date","Type","Amount Paid","Balance After","Mode"].map((h,i) => (
                           <th key={h} style={{
                             padding:"5px 10px", fontWeight:700, color:"var(--text3)", fontSize:11,
-                            textAlign: i >= 2 ? "right" : "left",
+                            textAlign: i >= 2 ? "center" : "left",
                             borderBottom:"1px solid var(--border)"
                           }}>{h}</th>
                         ))}
@@ -650,6 +660,9 @@ export default function MemberBill({ bill, onClose }) {
                             <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",
                               color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--teal)"}}>
                               ₹{fmt(inst.balance_after)}
+                            </td>
+                            <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                              {(inst.mode_of_payment || "cash").toUpperCase()}
                             </td>
                           </tr>
                         );

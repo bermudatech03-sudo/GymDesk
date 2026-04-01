@@ -118,17 +118,19 @@ class EnrollSerializer(serializers.Serializer):
     status            = serializers.CharField(required=False, default="active")
     plan_type         = serializers.CharField(required=False, default="basic")
     personal_trainer  = serializers.BooleanField(required=False, default=False)
+    mode_of_payment   = serializers.CharField(required=False, default="cash")
 
 
 class RenewSerializer(serializers.Serializer):
     plan_id     = serializers.IntegerField(required=False, allow_null=True)
     amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2)
     notes       = serializers.CharField(required=False, allow_blank=True, default="")
-
+    mode_of_payment   = serializers.CharField(required=False, default="cash")
 
 class BalancePaymentSerializer(serializers.Serializer):
-    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2)
-    notes       = serializers.CharField(required=False, allow_blank=True, default="")
+    amount_paid     = serializers.DecimalField(max_digits=10, decimal_places=2)
+    notes           = serializers.CharField(required=False, allow_blank=True, default="")
+    mode_of_payment = serializers.CharField(required=False, default="cash")
 
 class AssignTrainerSerializer(serializers.Serializer):
     trainer_id = serializers.IntegerField()

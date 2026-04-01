@@ -3,6 +3,7 @@
  * for GST filing. Triggered from Finances page.
  */
 import { useState, useEffect } from "react";
+import XLSXStyle from "xlsx-js-style";
 import api from "../api/axios";
 import "./MonthlyReport.css";
 
@@ -80,12 +81,12 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
   .rp-table .total-row td{font-weight:800;background:#f0f0f0;border-top:2px solid #ccc;
     border-bottom:none;font-size:12px}
   .rp-table tbody tr:hover td{background:#fafafa}
-  /* income table col widths — 9 cols */
-  .income-table col.col-date{width:8%}.income-table col.col-inv{width:10%}
-  .income-table col.col-src{width:16%}.income-table col.col-cat{width:12%}
-  .income-table col.col-base{width:11%}.income-table col.col-gp{width:6%}
-  .income-table col.col-gamt{width:11%}.income-table col.col-plan{width:13%}
-  .income-table col.col-paid{width:13%}
+  /* income table col widths — 10 cols */
+  .income-table col.col-date{width:7%}.income-table col.col-inv{width:9%}
+  .income-table col.col-src{width:14%}.income-table col.col-cat{width:11%}
+  .income-table col.col-base{width:10%}.income-table col.col-gp{width:5%}
+  .income-table col.col-gamt{width:10%}.income-table col.col-plan{width:12%}
+  .income-table col.col-paid{width:11%}.income-table col.col-mode{width:11%}
   /* expense table col widths */
   .expense-table col.col-date{width:10%}.expense-table col.col-desc{width:32%}
   .expense-table col.col-cat{width:20%}.expense-table col.col-vendor{width:24%}
@@ -115,6 +116,170 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     URL.revokeObjectURL(url);
   };
 
+  const handleExcelDownload = () => {
+    // ── shared style helpers ────────────────────────────────────────────────
+    const DARK   = "1A1A2E";   // gym dark navy
+    const GREEN  = "2D6A4F";   // header green
+    const LTGRN  = "D8F3DC";   // income row tint
+    const LTRED  = "FFE8E8";   // expense row tint
+    const GOLD   = "F9A825";   // total row accent
+    const TOTBG  = "FFF3CD";   // total row bg
+
+    const font    = (bold, color = "000000", sz = 10) => ({ bold, color: { rgb: color }, sz, name: "Calibri" });
+    const fill    = hex => ({ type: "pattern", pattern: "solid", fgColor: { rgb: hex } });
+    const border  = () => ({
+      top:    { style: "thin", color: { rgb: "CCCCCC" } },
+      bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+      left:   { style: "thin", color: { rgb: "CCCCCC" } },
+      right:  { style: "thin", color: { rgb: "CCCCCC" } },
+    });
+    const align   = (h, wrapText = false) => ({ horizontal: h, vertical: "center", wrapText });
+
+    const hdrStyle = (bg = GREEN) => ({ font: font(true, "FFFFFF", 10), fill: fill(bg), border: border(), alignment: align("center") });
+    const titleStyle = () => ({ font: font(true, "FFFFFF", 13), fill: fill(DARK), alignment: align("center") });
+    const totalStyle = (color = "000000") => ({
+      font: font(true, color, 10), fill: fill(TOTBG),
+      border: { top: { style: "medium", color: { rgb: GOLD } }, bottom: { style: "medium", color: { rgb: GOLD } },
+                left: border().left, right: border().right },
+      alignment: align("center"),
+    });
+    const dataStyle = (bg = "FFFFFF", bold = false, color = "333333", h = "left") =>
+      ({ font: font(bold, color, 10), fill: fill(bg), border: border(), alignment: align(h) });
+    const numStyle = (bg = "FFFFFF", bold = false, color = "1A5C1A") =>
+      ({ font: font(bold, color, 10), fill: fill(bg), border: border(), alignment: align("right"),
+         numFmt: '₹#,##0.00' });
+
+    // helper: write a 2D array of { v, s } cells into a worksheet
+    const buildSheet = (rows2d, colWidths) => {
+      const ws = {};
+      let maxR = 0, maxC = 0;
+      rows2d.forEach((row, r) => {
+        row.forEach((cell, c) => {
+          const addr = XLSXStyle.utils.encode_cell({ r, c });
+          ws[addr] = { v: cell.v ?? "", t: typeof cell.v === "number" ? "n" : "s", s: cell.s };
+          if (cell.numFmt) ws[addr].z = cell.numFmt;
+          maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
+        });
+      });
+      ws["!ref"] = XLSXStyle.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+      ws["!cols"] = colWidths.map(w => ({ wch: w }));
+      ws["!rows"] = [{ hpt: 24 }, { hpt: 20 }];  // title + header rows taller
+      return ws;
+    };
+
+    const periodLabel = `${MONTHS[month - 1]} ${year}`;
+    const gymName     = report.gym?.name || "Gym";
+
+    // ── INCOME SHEET ──────────────────────────────────────────────────────
+    const incHdrs = ["Date","Invoice","Source","Category","Base Amount","GST %","GST Amt","Plan Total","Paid Now","Mode"];
+    const incData  = report.incomes || [];
+
+    const incRows2d = [
+      // Title row spanning all cols (only cell A1 filled; Excel merge done below)
+      [{ v: `${gymName} — Income Report — ${periodLabel}`, s: titleStyle() },
+       ...Array(incHdrs.length - 1).fill({ v: "", s: titleStyle() })],
+      // Header row
+      incHdrs.map(h => ({ v: h, s: hdrStyle(GREEN) })),
+      // Data rows — alternating tint
+      ...incData.map((i, idx) => {
+        const bg = idx % 2 === 0 ? "FFFFFF" : LTGRN;
+        return [
+          { v: i.date,                                              s: dataStyle(bg) },
+          { v: i.invoice_number || "—",                            s: dataStyle(bg, false, "555555") },
+          { v: i.source,                                            s: dataStyle(bg, false, "333333", "left") },
+          { v: CAT_LABELS[i.category] || i.category,               s: dataStyle(bg) },
+          { v: Number(i.base_amount || 0),                         s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: Number(i.gst_rate   || 0),                          s: dataStyle(bg, false, "CC5500", "center") },
+          { v: Number(i.gst_amount || 0),                          s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: i.plan_total != null ? Number(i.plan_total) : "",   s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: Number(i.amount || 0),                              s: numStyle(bg, true, "1A5C1A"), numFmt: '₹#,##0.00' },
+          { v: (i.mode_of_payment || "cash").toUpperCase(),        s: dataStyle(bg, false, "1A3A9A", "center") },
+        ];
+      }),
+      // Total row
+      [
+        { v: "TOTAL",                           s: totalStyle() },
+        { v: "",                                s: totalStyle() },
+        { v: "",                                s: totalStyle() },
+        { v: `${incData.length} transaction${incData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
+        { v: Number(report.total_base    || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
+        { v: "",                                s: totalStyle() },
+        { v: Number(report.total_gst     || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
+        { v: "",                                s: totalStyle() },
+        { v: Number(report.total_income  || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
+        { v: "",                                s: totalStyle() },
+      ],
+    ];
+    const wsIncome = buildSheet(incRows2d, [11, 13, 22, 16, 13, 7, 12, 13, 12, 10]);
+    // Merge title row across all columns
+    wsIncome["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: incHdrs.length - 1 } }];
+    wsIncome["!freeze"] = { xSplit: 0, ySplit: 2 };  // freeze title + header
+
+    // ── EXPENSE SHEET ─────────────────────────────────────────────────────
+    const expHdrs = ["Date","Description","Category","Vendor","Amount"];
+    const expData  = report.expenses || [];
+
+    const expRows2d = [
+      [{ v: `${gymName} — Expenses — ${periodLabel}`, s: titleStyle() },
+       ...Array(expHdrs.length - 1).fill({ v: "", s: titleStyle() })],
+      expHdrs.map(h => ({ v: h, s: hdrStyle("C0392B") })),
+      ...expData.map((e, idx) => {
+        const bg = idx % 2 === 0 ? "FFFFFF" : LTRED;
+        return [
+          { v: e.date,                                  s: dataStyle(bg) },
+          { v: e.description,                           s: dataStyle(bg, false, "333333", "left") },
+          { v: CAT_LABELS[e.category] || e.category,   s: dataStyle(bg) },
+          { v: e.vendor || "—",                         s: dataStyle(bg, false, "555555") },
+          { v: Number(e.amount || 0),                   s: numStyle(bg, false, "CC0000"), numFmt: '₹#,##0.00' },
+        ];
+      }),
+      [
+        { v: "TOTAL",                              s: totalStyle() },
+        { v: "",                                   s: totalStyle() },
+        { v: "",                                   s: totalStyle() },
+        { v: `${expData.length} transaction${expData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
+        { v: Number(report.total_expense || 0),    s: totalStyle("CC0000"), numFmt: '₹#,##0.00' },
+      ],
+    ];
+    const wsExpense = buildSheet(expRows2d, [11, 32, 18, 20, 14]);
+    wsExpense["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: expHdrs.length - 1 } }];
+    wsExpense["!freeze"] = { xSplit: 0, ySplit: 2 };
+
+    // ── SUMMARY SHEET ─────────────────────────────────────────────────────
+    const net = Number(report.net || 0);
+    const summaryRows2d = [
+      [{ v: `${gymName} — Finance Summary — ${periodLabel}`, s: titleStyle() },
+       { v: "", s: titleStyle() }],
+      [{ v: "Description", s: hdrStyle(DARK) }, { v: "Amount", s: hdrStyle(DARK) }],
+      [{ v: "Total Income (incl. GST)",  s: dataStyle("D8F3DC", true, "2D6A4F") },
+       { v: Number(report.total_income  || 0), s: numStyle("D8F3DC", true, "2D6A4F"), numFmt: '₹#,##0.00' }],
+      [{ v: "GST Collected",             s: dataStyle("E8F4FD", false, "1A3A9A") },
+       { v: Number(report.total_gst     || 0), s: numStyle("E8F4FD", false, "1A3A9A"), numFmt: '₹#,##0.00' }],
+      [{ v: "Taxable Base Income",       s: dataStyle("FFFFFF") },
+       { v: Number(report.total_base    || 0), s: numStyle("FFFFFF"), numFmt: '₹#,##0.00' }],
+      [{ v: "Total Expenses",            s: dataStyle("FFE8E8", false, "CC0000") },
+       { v: Number(report.total_expense || 0), s: numStyle("FFE8E8", false, "CC0000"), numFmt: '₹#,##0.00' }],
+      // Divider
+      [{ v: "", s: dataStyle("EEEEEE") }, { v: "", s: dataStyle("EEEEEE") }],
+      // Net P&L row — green if profit, red if loss
+      [{ v: "NET PROFIT / LOSS", s: { font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
+          fill: fill(net >= 0 ? "2D6A4F" : "C0392B"), border: border(), alignment: align("left") } },
+       { v: net, s: { font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
+          fill: fill(net >= 0 ? "2D6A4F" : "C0392B"), border: border(), alignment: align("right"),
+          numFmt: '₹#,##0.00' }, numFmt: '₹#,##0.00' }],
+    ];
+    const wsSummary = buildSheet(summaryRows2d, [32, 18]);
+    wsSummary["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+    wsSummary["!rows"] = [{ hpt: 26 }, { hpt: 20 }, ...Array(8).fill({ hpt: 22 })];
+
+    // ── Build workbook ─────────────────────────────────────────────────────
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, wsIncome,  "Income");
+    XLSXStyle.utils.book_append_sheet(wb, wsExpense, "Expenses");
+    XLSXStyle.utils.book_append_sheet(wb, wsSummary, "Summary");
+    XLSXStyle.writeFile(wb, `Finance_Report_${MONTHS[month - 1]}_${year}.xlsx`);
+  };
+
   const fmt = v => `₹${Number(v || 0).toLocaleString("en-IN")}`;
 
   return (
@@ -141,9 +306,14 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
           </div>
           <div style={{ display:"flex", gap:8 }}>
             {report && (
-              <button className="btn btn-primary btn-sm" onClick={handleDownload}>
-                ⬇ Download Report
-              </button>
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={handleDownload}>
+                  ⬇ HTML
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={handleExcelDownload}>
+                  ⬇ Excel
+                </button>
+              </>
             )}
             <button className="btn btn-secondary btn-sm" onClick={onClose}>✕</button>
           </div>
@@ -205,6 +375,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                     <col className="col-gamt"/>
                     <col className="col-plan"/>
                     <col className="col-paid"/>
+                    <col className="col-mode"/>
                   </colgroup>
                   <thead>
                     <tr>
@@ -217,6 +388,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <th className="r">GST Amt</th>
                       <th className="r">Plan Total</th>
                       <th className="r">Paid Now</th>
+                      <th className="c">Mode</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -253,6 +425,9 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                         <td className="r" style={{ fontWeight: 700 }}>
                           ₹{Number(i.amount).toLocaleString("en-IN")}
                         </td>
+                        <td className="c" style={{ textTransform:"uppercase", fontSize:10, fontWeight:700, color:"var(--text2,#555)" }}>
+                          {(i.mode_of_payment || "cash").toUpperCase()}
+                        </td>
                       </tr>
                     ))}
                     <tr className="total-row">
@@ -262,6 +437,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <td className="r">{fmt(report.total_gst)}</td>
                       <td className="r">—</td>
                       <td className="r">{fmt(report.total_income)}</td>
+                      <td className="c">—</td>
                     </tr>
                   </tbody>
                 </table>

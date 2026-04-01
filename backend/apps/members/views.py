@@ -97,11 +97,12 @@ def _record_income_for_installment(member, payment, installment):
             f"Plan: {member.plan.name if member.plan else 'N/A'} "
             f"| {payment.valid_from} → {payment.valid_to} "
             f"| Balance after: ₹{installment.balance_after} "
-            f"| plan_total:{plan_total}"
+            f"| plan_total:{plan_total} "
+            f"| mode:{installment.mode_of_payment or 'cash'}"
         ),
     )
 
-def _create_installment(payment, member, amount, installment_type, notes=""):
+def _create_installment(payment, member, amount, installment_type, notes="", mode_of_payment="cash"):
     balance_after = max(Decimal("0"), payment.balance - Decimal(str(amount)))
 
     installment = InstallmentPayment.objects.create(
@@ -112,6 +113,7 @@ def _create_installment(payment, member, amount, installment_type, notes=""):
         balance_after    = balance_after,
         paid_date        = timezone.localdate(),
         notes            = notes,
+        mode_of_payment  = mode_of_payment,
     )
 
     payment.amount_paid = payment.amount_paid + Decimal(str(amount))
@@ -130,6 +132,7 @@ def _build_bill(member, payment, gym):
             "balance_after":    float(inst.balance_after),
             "paid_date":        str(inst.paid_date),
             "notes":            inst.notes,
+            "mode_of_payment":  inst.mode_of_payment,
         })
 
     return {
@@ -291,7 +294,8 @@ class MemberViewSet(viewsets.ModelViewSet):
             if amount_paid > 0:
                 installment = _create_installment(
                     payment, member, amount_paid, "enrollment",
-                    notes=d.get("notes", "")
+                    notes=d.get("notes", ""),
+                    mode_of_payment=d.get("mode_of_payment", "cash"),
                 )
                 _record_income_for_installment(member, payment, installment)
 
@@ -344,7 +348,8 @@ class MemberViewSet(viewsets.ModelViewSet):
         if amount_paid > 0:
             installment = _create_installment(
                 payment, member, amount_paid, "renewal",
-                notes=s.validated_data.get("notes", "")
+                notes=s.validated_data.get("notes", ""),
+                mode_of_payment=s.validated_data.get("mode_of_payment", "cash"),
             )
             _record_income_for_installment(member, payment, installment)
 
@@ -380,7 +385,8 @@ class MemberViewSet(viewsets.ModelViewSet):
 
         installment = _create_installment(
             payment, member, extra, "balance",
-            notes=s.validated_data.get("notes", "")
+            notes=s.validated_data.get("notes", ""),
+            mode_of_payment=s.validated_data.get("mode_of_payment", "cash"),
         )
         _record_income_for_installment(member, payment, installment)
 
@@ -435,7 +441,6 @@ class MemberPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = MemberPaymentSerializer
     filterset_fields = ["member","status"]
     ordering_fields  = ["paid_date"]
-
 
 class MemberAttendanceViewSet(viewsets.ModelViewSet):
     queryset         = MemberAttendance.objects.select_related("member").all()

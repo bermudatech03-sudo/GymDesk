@@ -18,7 +18,8 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
     ? { ...member, plan: member.plan || "", diet: member.diet || "", plan_type: member.plan_type || "basic" }
     : {
       name: "", phone: "", email: "", gender: "", plan: "", plan_type: "basic", diet: "",
-      renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false
+      renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false,
+      mode_of_payment: "cash"
     }
   );
   const [saving, setSaving] = useState(false);
@@ -81,6 +82,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
             console.log("member:", res.data.id, "payments response:", hRes.data);
             const raw = hRes.data;
             const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
+            console.log("Parsed payments list:", list);
             list.sort((a, b) => new Date(a.paid_date) - new Date(b.paid_date));
             const listWithInsts = list.map(p => ({
               ...p,
@@ -237,7 +239,19 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                 <option value="paused">Paused</option>
               </select>
             </div>
+            {!isEdit && (
+              <div className="form-group">
+                <label className="form-label">Mode of Payment</label>
+                <select className="form-input" value={form.mode_of_payment || "cash"} onChange={e => set("mode_of_payment", e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            )}
           </div>
+
           <div className="form-group">
             <label className="form-label">Food Type</label>
             <select className="form-input" value={form.foodType || ""} onChange={e => set("foodType", e.target.value)}>
@@ -272,6 +286,7 @@ function RenewModal({ member, plans, onClose, onSave }) {
     return p ? (p.price_with_gst ?? p.price) : "";
   });
   const [notes, setNotes] = useState("");
+  const [modeOfPayment, setModeOfPayment] = useState("cash");
   const [saving, setSaving] = useState(false);
 
   const handlePlanChange = (id) => {
@@ -293,6 +308,7 @@ function RenewModal({ member, plans, onClose, onSave }) {
         plan_id: planId || undefined,
         amount_paid: amount,
         notes,
+        mode_of_payment: modeOfPayment,
       });
       toast.success(balance > 0
         ? `Renewed! Balance ₹${balance} recorded.`
@@ -368,6 +384,15 @@ function RenewModal({ member, plans, onClose, onSave }) {
               placeholder="Optional note…" />
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <label className="form-label">Mode Of Payment </label>
+            <select className="form-input" value={modeOfPayment} onChange={e => setModeOfPayment(e.target.value)}>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? "Processing…" : "Renew & Record"}
@@ -385,6 +410,7 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [balAmt, setBalAmt] = useState("");
+  const [balMode, setBalMode] = useState("cash");
   const [paying, setPaying] = useState(false);
 
   const load = useCallback(() => {
@@ -424,7 +450,7 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
     }
     setPaying(true);
     try {
-      const res = await api.post(`/members/list/${member.id}/pay-balance/`, { amount_paid: balAmt });
+      const res = await api.post(`/members/list/${member.id}/pay-balance/`, { amount_paid: balAmt, mode_of_payment: balMode });
       toast.success("Balance payment recorded in Finances!");
       setBalAmt("");
       const updated = await api.get("/members/payments/", { params: { member: member.id } });
@@ -513,6 +539,12 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
             <input className="form-input" type="number" min="1" max={latestBal.balance}
               value={balAmt} onChange={e => setBalAmt(e.target.value)}
               placeholder={`Max ₹${latestBal.balance}`} style={{ maxWidth: 140 }} />
+            <select className="form-input" value={balMode} onChange={e => setBalMode(e.target.value)} style={{ maxWidth: 110 }}>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="other">Other</option>
+            </select>
             <button className="btn btn-primary btn-sm" onClick={payBalance} disabled={paying}>
               {paying ? "…" : "Record Payment"}
             </button>

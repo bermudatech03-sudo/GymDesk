@@ -171,16 +171,14 @@ def run():
             defaults={
                 "duration_days": days,
                 "price": Decimal(price),
-                "plans": code,
-                "personal_trainer": pt,
                 "description": desc,
                 "is_active": True,
             },
         )
         plan_objs.append(p)
 
-    pt_plans    = [p for p in plan_objs if p.personal_trainer]
-    no_pt_plans = [p for p in plan_objs if not p.personal_trainer]
+    pt_plans    = [p for p in plan_objs if "PT" in p.name]
+    no_pt_plans = [p for p in plan_objs if "PT" not in p.name]
 
     # ─────────────────────────────
     # 2. DIET PLANS
@@ -335,6 +333,8 @@ def run():
         food_type = random.choice(food_types)
         diet = next((dp for dp in diet_plan_objs if food_type in dp.foodType), diet_plan_objs[0])
 
+        plan_type = "premium" if "Premium" in plan.name else ("standard" if "Standard" in plan.name else "basic")
+
         m, _ = Member.objects.get_or_create(
             phone=phone,
             defaults={
@@ -343,6 +343,7 @@ def run():
                 "age": random.randint(18, 50),
                 "gender": random.choice(genders),
                 "plan": plan,
+                "plan_type": plan_type,
                 "diet": diet,
                 "join_date": join,
                 "renewal_date": join + timedelta(days=plan.duration_days),
@@ -400,6 +401,7 @@ def run():
                 amount=paid,
                 balance_after=total - paid,
                 paid_date=m.join_date,
+                mode_of_payment=random.choice(["cash", "upi", "card"]),
             )
 
     # ─────────────────────────────
@@ -556,7 +558,6 @@ def run():
             trigger_type="renewal_remind",
             defaults={
                 "recipient_name": m.name,
-                "recipient_email": m.email or "",
                 "channel": "whatsapp",
                 "message": f"Hi {m.name.split()[0]}, your membership expires on {m.renewal_date}. Renew now to continue your fitness journey!",
                 "status": "sent",
@@ -570,7 +571,6 @@ def run():
             trigger_type="expiry",
             defaults={
                 "recipient_name": m.name,
-                "recipient_email": m.email or "",
                 "channel": "whatsapp",
                 "message": f"Hi {m.name.split()[0]}, your membership has expired. Visit us to renew and get back on track!",
                 "status": random.choice(["sent", "pending"]),
@@ -583,7 +583,6 @@ def run():
             trigger_type="enrollment",
             defaults={
                 "recipient_name": m.name,
-                "recipient_email": m.email or "",
                 "channel": "whatsapp",
                 "message": f"Welcome to the gym, {m.name.split()[0]}! Your {m.plan.name if m.plan else 'membership'} is now active. Let's crush those goals!",
                 "status": "sent",

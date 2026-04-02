@@ -145,3 +145,100 @@ class MonthlyReportView(APIView):
 class GSTRateView(APIView):
     def get(self, request):
         return Response({"gst_rate": float(get_gst_rate())})
+    
+class ToBuyView(APIView):
+    def _serialize(self, item):
+        return {
+            "id": item.id,
+            "item_name": item.item_name,
+            "quantity": item.quantity,
+            "price": float(item.price) if item.price else None,
+            "BuyingDate": item.BuyingDate,
+            "Priority": item.Priority,
+            "status": item.status,
+            "notes": item.notes,
+            "created_at": item.created_at,
+            "item_url": item.item_url,
+        }
+
+    def get(self, request):
+        from .models import ToBuy
+        items = ToBuy.objects.all().order_by("-created_at")
+        return Response([self._serialize(item) for item in items])
+
+    def post(self, request):
+        from .models import ToBuy
+        data = request.data
+        if not data.get("item_name"):
+            return Response({"error": "item_name is required"}, status=400)
+        item = ToBuy.objects.create(
+            item_name=data["item_name"],
+            quantity=data.get("quantity", 1),
+            price=data.get("price") or None,
+            BuyingDate=data.get("BuyingDate") or None,
+            Priority=data.get("Priority", "medium"),
+            status=data.get("status", "pending"),
+            notes=data.get("notes", ""),
+            item_url=data.get("item_url", ""),
+        )
+        return Response(self._serialize(item), status=201)
+
+    def put(self, request):
+        from .models import ToBuy
+        data = request.data
+        item_id = data.get("id")
+        if not item_id:
+            return Response({"error": "ID is required for update"}, status=400)
+        try:
+            item = ToBuy.objects.get(id=item_id)
+        except ToBuy.DoesNotExist:
+            return Response({"error": "Item not found"}, status=404)
+        item.item_name = data.get("item_name", item.item_name)
+        item.quantity  = data.get("quantity",  item.quantity)
+        item.price     = data.get("price",     item.price)
+        item.BuyingDate= data.get("BuyingDate",item.BuyingDate) or None
+        item.Priority  = data.get("Priority",  item.Priority)
+        item.status    = data.get("status",    item.status)
+        item.notes     = data.get("notes",     item.notes)
+        item.item_url  = data.get("item_url",  item.item_url)
+        item.save()
+        return Response(self._serialize(item))
+
+    def delete(self, request):
+        from .models import ToBuy
+        item_id = request.query_params.get("id")
+        if not item_id:
+            return Response({"error": "ID is required"}, status=400)
+        try:
+            ToBuy.objects.get(id=item_id).delete()
+            return Response({"deleted": True})
+        except ToBuy.DoesNotExist:
+            return Response({"error": "Item not found"}, status=404)
+
+
+class CanAffordView(APIView):
+    def get(self, request):
+        from .models import ToBuy
+        today   = timezone.localdate()
+        item_id = request.query_params.get("id")
+        year    = int(request.query_params.get("year",  today.year))
+        month   = int(request.query_params.get("month", today.month))
+
+        if not item_id:
+            return Response({"error": "id is required"}, status=400)
+        try:
+            item = ToBuy.objects.get(id=item_id)
+        except ToBuy.DoesNotExist:
+            return Response({"error": "Item not found"}, status=404)
+
+        income      = Income.objects.filter(date__year=year, date__month=month).aggregate(t=Sum("amount"))["t"] or 0
+        expenditure = Expenditure.objects.filter(date__year=year, date__month=month).aggregate(t=Sum("amount"))["t"] or 0
+        money_left  = income - expenditure
+
+        return Response({
+            "can_buy":    money_left >= (item.price or 0),
+            "money_left": float(money_left),
+            "item_price": float(item.price) if item.price else None,
+            "month":      month,
+            "year":       year,
+        })

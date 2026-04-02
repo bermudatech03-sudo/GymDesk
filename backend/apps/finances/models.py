@@ -46,3 +46,16 @@ class Expenditure(models.Model):
 
     class Meta:
         ordering = ["-date"]
+
+class ToBuy(models.Model):
+    PRIORITY = [("low","Low"), ("medium","Medium"), ("high","High")]
+    STATUS = [("pending","Pending"), ("purchased","Purchased"),("cancelled","Cancelled")]
+    item_name = models.CharField(max_length=255)
+    quantity  = models.IntegerField(default=1)
+    price     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    BuyingDate = models.DateField(null=True, blank=True)
+    Priority   = models.CharField(max_length=10, choices=PRIORITY, default="medium")
+    status     = models.CharField(max_length=10, choices=STATUS, default="pending")
+    notes      = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    item_url   = models.URLField(blank=True)

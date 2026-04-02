@@ -18,7 +18,7 @@ from apps.members.models import (
 from apps.staff.models import (
     StaffMember, StaffShift, StaffAttendance, StaffPayment
 )
-from apps.finances.models import Income, Expenditure
+from apps.finances.models import Income, Expenditure, ToBuy
 from apps.equipment.models import Equipment, MaintenanceLog
 from apps.notifications.models import Notification
 
@@ -121,6 +121,26 @@ FINANCE_EXPENSE_NOTES = [
     ("marketing",   "Social media ads",             "AdAgency"),
     ("maintenance", "AC service and filter change", "CoolTech"),
     ("other",       "Miscellaneous expenses",       ""),
+]
+
+
+# (item_name, quantity, price, priority, status, notes, item_url, days_offset)
+TOBUY_LIST = [
+    ("Commercial Treadmill",        1,  95000,  "high",   "pending",   "Replace the broken unit in cardio zone",       "https://www.lifefitness.com",       10),
+    ("Adjustable Dumbbells Set",    2,  18000,  "high",   "pending",   "5kg to 50kg range needed",                     "https://www.decathlon.in",          5),
+    ("Foam Roller Pack",           10,   600,   "low",    "purchased", "For warm-up and recovery area",                "https://www.amazon.in",             20),
+    ("Gym Mirrors (6x4 ft)",        4,  12000,  "medium", "pending",   "For the free weights section walls",           "",                                  7),
+    ("Resistance Band Set",        15,   450,   "low",    "purchased", "Replacing worn-out bands",                     "https://www.amazon.in",             15),
+    ("Pull-up Bar Wall Mount",      2,   3500,  "medium", "pending",   "Install near strength section",                "",                                  8),
+    ("Air Purifier",                2,  22000,  "high",   "pending",   "Needed for main floor air quality",            "https://www.dyson.in",              3),
+    ("Yoga Blocks",                20,   250,   "low",    "pending",   "For yoga and flexibility classes",             "https://www.decathlon.in",          12),
+    ("Whey Protein (bulk)",         5,   4200,  "medium", "cancelled", "Decided not to sell supplements for now",      "",                                  25),
+    ("Battle Ropes",                2,   8500,  "medium", "pending",   "For functional training zone",                 "https://www.amazon.in",             6),
+    ("Digital Weighing Scale",      3,   1800,  "low",    "purchased", "For member body weight tracking",              "",                                  18),
+    ("Spin Bike",                   2,  35000,  "high",   "pending",   "High demand in morning batch",                 "https://www.schwinn.com",           2),
+    ("First Aid Kit",               2,   1200,  "high",   "purchased", "Monthly restocking",                           "",                                  22),
+    ("Sound System",                1,  15000,  "medium", "pending",   "Current speakers have poor quality",           "https://www.bose.com",              9),
+    ("Gym Flooring Tiles (10 sqm)", 1,   9000,  "medium", "pending",   "For the new functional training area",         "",                                  11),
 ]
 
 
@@ -506,7 +526,25 @@ def run():
             )
 
     # ─────────────────────────────
-    # 11. NOTIFICATIONS
+    # 11. TO-BUY LIST
+    # ─────────────────────────────
+    for item_name, qty, price, priority, status, notes, url, days_offset in TOBUY_LIST:
+        buying_date = (today + timedelta(days=days_offset)) if status == "pending" else None
+        ToBuy.objects.get_or_create(
+            item_name=item_name,
+            defaults={
+                "quantity":    qty,
+                "price":       Decimal(price),
+                "Priority":    priority,
+                "status":      status,
+                "notes":       notes,
+                "item_url":    url,
+                "BuyingDate":  buying_date,
+            },
+        )
+
+    # ─────────────────────────────
+    # 12. NOTIFICATIONS
     # ─────────────────────────────
     expiring_members = [m for m in members if m.renewal_date and (m.renewal_date - today).days <= 7]
     expired_members  = [m for m in members if m.status == "expired"]
@@ -562,6 +600,7 @@ def run():
     print(f"   Income rows:   {Income.objects.count()}")
     print(f"   Expense rows:  {Expenditure.objects.count()}")
     print(f"   Notifications: {Notification.objects.count()}")
+    print(f"   To-Buy items:  {ToBuy.objects.count()}")
 
 
 if __name__ == "__main__":

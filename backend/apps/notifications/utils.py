@@ -1,4 +1,6 @@
 import logging
+
+from gym_crm import settings
 from .models import Notification
 
 logger = logging.getLogger(__name__)
@@ -9,6 +11,7 @@ TEMPLATES = {
     "enrollment":      "Hi {name}, welcome aboard! Your membership starts today and is valid until {date}. See you at the gym!",
     "expiry":          "Hi {name}, your gym membership expired on {date}. Renew now to regain access. We miss you!",
     "manual":          "Hi {name}, you have a notification from the gym.",
+    "daily_notice":    "Hi Admin,  You need to buy {itemName} and right now you have {moneyLeft} ruppes. You need to buy this {itemName} by {date}"
 }
 
 
@@ -30,6 +33,29 @@ def send_notification(member, trigger_type: str):
 
     Notification.objects.create(
         recipient_name=member.name,
+        recipient_phone=phone,
+        channel="whatsapp",
+        trigger_type=trigger_type,
+        message=body,
+        status="pending",       # signal fires on this insert and dispatches immediately
+    )
+
+def send_notification_admin(item,moneyleft,trigger_type: str):
+    template = TEMPLATES.get(trigger_type, "Hi {name}.")
+    adminPhoneNumber = settings.ADMIN_WHATSAPP_NUMBER
+    body = template.format(
+        itemName=item.item_name,
+        moneyLeft = moneyleft,
+        date=str(item.BuyingDate or ""),
+    )
+
+    # Normalise phone: strip spaces/dashes, ensure country code prefix
+    phone = str(adminPhoneNumber or "").strip().replace(" ", "").replace("-", "")
+    if phone and not phone.startswith("91"):
+        phone = f"91{phone}"  # prepend India country code if missing
+
+    Notification.objects.create(
+        recipient_name=item.item_name,
         recipient_phone=phone,
         channel="whatsapp",
         trigger_type=trigger_type,

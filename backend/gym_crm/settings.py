@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'apps.equipment',
     'apps.finances',
     'apps.notifications',
+    'django_apscheduler'
 ]
 
 MIDDLEWARE = [
@@ -136,5 +137,5 @@ GYM_GSTIN   = "33AAAAA0000A1Z5"
 
 META_WHATSAPP_ACCESS_TOKEN    = config("META_WHATSAPP_ACCESS_TOKEN", default="")
 META_WHATSAPP_PHONE_NUMBER_ID = config("META_WHATSAPP_PHONE_NUMBER_ID", default="")
-
+ADMIN_WHATSAPP_NUMBER = config("ADMIN_WHATSAPP_NUMBER", default="")
 

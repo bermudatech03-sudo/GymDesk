@@ -6,3 +6,5 @@ class NotificationsConfig(AppConfig):
 
     def ready(self):
         import apps.notifications.signals  # noqa: F401  — registers the signal
+        from apps.notifications.scheduler import start
+        start()

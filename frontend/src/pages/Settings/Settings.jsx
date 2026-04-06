@@ -64,25 +64,108 @@ export default function Settings() {
           </form>
         </div>
 
-        {/* App info */}
-        <div className="card" style={{padding:24,gridColumn:"1/-1"}}>
-          <div style={{fontFamily:"var(--font-display)",fontSize:16,fontWeight:700,marginBottom:18}}>About GymPro CRM</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
-            {[
-              {label:"Version",value:"1.0.0"},
-              {label:"Backend",value:"Django 4.2 + DRF"},
-              {label:"Frontend",value:"React 18 + Vite"},
-              {label:"Database",value:"PostgreSQL"},
-              {label:"Auth",value:"JWT (SimpleJWT)"},
-              {label:"Notifications",value:"Email + WhatsApp (Twilio)"},
-            ].map(({label,value})=>(
-              <div key={label} style={{background:"var(--surface2)",borderRadius:8,padding:"12px 16px"}}>
-                <div style={{fontSize:11,color:"var(--text3)",marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{label}</div>
-                <div style={{fontSize:13,fontWeight:600,color:"var(--text1)",fontFamily:"var(--font-mono)"}}>{value}</div>
-              </div>
-            ))}
+
+        <div className="card" style={{ padding: 28, gridColumn: "1/-1", position: "relative", overflow: "hidden" }}>
+  
+  {/* Headline */}
+  <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
+    GymPro CRM
+  </div>
+
+  {/* Tagline */}
+  <div style={{ fontSize: 14, color: "var(--text2)", marginBottom: 20, maxWidth: 600 }}>
+    The all-in-one solution to manage your gym, boost member engagement, and grow your fitness business effortlessly.
+  </div>
+
+  {/* Features Grid */}
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14 }}>
+    {[
+      { label: "⚡ Fast & Scalable", value: "Built with Django + React" },
+      { label: "🔐 Secure Access", value: "JWT Authentication" },
+      { label: "📊 Smart Data", value: "PostgreSQL Powered" },
+      { label: "📩 Instant Alerts", value: "Email + WhatsApp Integration" },
+      { label: "🎯 Modern UI", value: "Lightning-fast React + Vite" },
+      { label: "🚀 Version", value: "1.0.0 – Ready to Launch" },
+    ].map(({ label, value }) => (
+      <div key={label} style={{ background: "var(--surface2)", borderRadius: 10, padding: "14px 18px" }}>
+        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6, fontWeight: 600 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text1)" }}>
+          {value}
+        </div>
+      </div>
+    ))}
+  </div>
+
+  {/* Call To Action */}
+  <div style={{ marginTop: 22, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div style={{ fontSize: 13, color: "var(--text2)" }}>
+      Transform your gym management today.
+    </div>
+
+    
+  </div>
+</div>
+
+
+<div className="card" style={{ padding: 28, gridColumn: "1/-1" }}>
+
+  {/* 🔝 Advertisement Section */}
+  <div style={{ marginBottom: 28 }}>
+    <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
+      Company Details
+    </div>
+
+    <div style={{ fontSize: 14, color: "var(--text2)", marginBottom: 18, maxWidth: 600 }}>
+      
+    </div>
+  </div>
+
+  {/* 🔽 Divider */}
+  <div style={{ height: 1, background: "var(--border)", margin: "20px 0" }} />
+
+  {/* 🔽 Company Details Section */}
+  <div>
+    <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
+      Bermuda Tech
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+      {[
+        { label: "Company Name", value: "Bermuda Tech" },
+       
+        { label: "Location", value: "India" },
+        { label: "Product", value: "GymPro CRM" },
+        { label: "Support", value: "bermudatech03@gmail.com" },
+        { label: "Website", value: "bermudatech.com" },
+      ].map(({ label, value }) => (
+        <div key={label} style={{ background: "var(--surface2)", borderRadius: 8, padding: "12px 16px" }}>
+          <div style={{
+            fontSize: 11,
+            color: "var(--text3)",
+            marginBottom: 4,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: .5
+          }}>
+            {label}
+          </div>
+
+          <div style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text1)",
+            fontFamily: "var(--font-mono)"
+          }}>
+            {value}
           </div>
         </div>
+      ))}
+    </div>
+  </div>
+
+</div>
       </div>
     </div>
   );

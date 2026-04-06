@@ -438,8 +438,8 @@ export default function Finances() {
         {[
           {label:"Monthly Income",  val:fmt(summary?.total_income),  color:"var(--accent)", icon:"↓"},
           {label:"Monthly Expense", val:fmt(summary?.total_expense), color:"var(--danger)", icon:"↑"},
-          {label:"Net Savings",     val:fmt(summary?.savings),
-            color:(summary?.savings||0)>=0?"var(--teal)":"var(--danger)", icon:"★"},
+          {label:"Net Savings",     val:fmt(summary?.net_savings),
+            color:(summary?.net_savings||0)>=0?"var(--teal)":"var(--danger)", icon:"★"},
           {label:"Outstanding",     val:fmt(summary?.outstanding_balance), color:"var(--warn)", icon:"⚠"},
         ].map(c=>(
           <div key={c.label} className="stat-card animate-in">

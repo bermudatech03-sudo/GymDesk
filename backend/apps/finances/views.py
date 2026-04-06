@@ -44,9 +44,9 @@ class FinanceSummaryView(APIView):
         total_base    = inc.aggregate(t=Sum("base_amount"))["t"] or 0
         total_expense = exp.aggregate(t=Sum("amount"))["t"] or 0
 
-        all_income  = Income.objects.aggregate(t=Sum("amount"))["t"] or 0
-        all_expense = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
-        net_savings = all_income - all_expense
+        all_base_income = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
+        all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
+        net_savings     = all_base_income - all_expense
 
         # 12-month trend
         monthly = []

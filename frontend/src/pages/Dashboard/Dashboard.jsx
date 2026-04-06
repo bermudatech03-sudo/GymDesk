@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import "./Dashboard.css";
 
-const COLORS = ["#a8ff57","#2dffc3","#4da6ff","#ffb830","#ff5b5b","#b48fff"];
+const COLORS = ["#a8ff57", "#2dffc3", "#4da6ff", "#ffb830", "#ff5b5b", "#b48fff"];
 
 function StatCard({ icon, label, value, sub, color }) {
   return (
@@ -21,11 +21,11 @@ function StatCard({ icon, label, value, sub, color }) {
 
 export default function Dashboard() {
   const [memberStats, setMemberStats] = useState(null);
-  const [staffStats,  setStaffStats]  = useState(null);
-  const [eqStats,     setEqStats]     = useState(null);
-  const [finance,     setFinance]     = useState(null);
-  const [expiring,    setExpiring]    = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [staffStats, setStaffStats] = useState(null);
+  const [eqStats, setEqStats] = useState(null);
+  const [finance, setFinance] = useState(null);
+  const [expiring, setExpiring] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     document.getElementById("page-title").textContent = "Dashboard";
@@ -35,7 +35,7 @@ export default function Dashboard() {
       api.get("/equipment/list/stats/"),
       api.get("/finances/summary/"),
       api.get("/members/list/expiring_soon/?days=7"),
-    ]).then(([m,s,e,f,ex]) => {
+    ]).then(([m, s, e, f, ex]) => {
       setMemberStats(m.data);
       setStaffStats(s.data);
       setEqStats(e.data);
@@ -64,17 +64,17 @@ export default function Dashboard() {
     <div className="dashboard">
       {/* ── Stats row ── */}
       <div className="grid-4" style={{ marginBottom: 24 }}>
-        <StatCard icon="◈" label="Total Members"     value={memberStats?.total     ?? 0} sub={`${memberStats?.new_this_month ?? 0} new this month`} color="#a8ff57" />
-        <StatCard icon="✓" label="Active Members"    value={memberStats?.active    ?? 0} sub={`${memberStats?.expiring_7 ?? 0} expiring in 7 days`} color="#2dffc3" />
-        <StatCard icon="◉" label="Staff Active"      value={staffStats?.active     ?? 0} sub={`${staffStats?.on_leave ?? 0} on leave`} color="#4da6ff" />
-        <StatCard icon="◆" label="Equipment Items"   value={eqStats?.total         ?? 0} sub={`${eqStats?.due_maintenance ?? 0} need service`} color="#ffb830" />
+        <StatCard icon="◈" label="Total Members" value={memberStats?.total ?? 0} sub={`${memberStats?.new_this_month ?? 0} new this month`} color="#a8ff57" />
+        <StatCard icon="✓" label="Active Members" value={memberStats?.active ?? 0} sub={`${memberStats?.expiring_7 ?? 0} expiring in 7 days`} color="#2dffc3" />
+        <StatCard icon="◉" label="Staff Active" value={staffStats?.active ?? 0} sub={`${staffStats?.on_leave ?? 0} on leave`} color="#4da6ff" />
+        <StatCard icon="◆" label="Equipment Items" value={eqStats?.total ?? 0} sub={`${eqStats?.due_maintenance ?? 0} need service`} color="#ffb830" />
       </div>
 
       {/* ── Finance stats ── */}
       <div className="grid-3" style={{ marginBottom: 24 }}>
-        <StatCard icon="₹" label="Monthly Income"  value={`₹${Number(finance?.total_income ?? 0).toLocaleString("en-IN")}`} color="#a8ff57" />
+        <StatCard icon="₹" label="Monthly Income" value={`₹${Number(finance?.total_income ?? 0).toLocaleString("en-IN")}`} color="#a8ff57" />
         <StatCard icon="↑" label="Monthly Expense" value={`₹${Number(finance?.total_expense ?? 0).toLocaleString("en-IN")}`} color="#ff5b5b" />
-        <StatCard icon="★" label="Net Savings"     value={`₹${Number(finance?.savings ?? 0).toLocaleString("en-IN")}`} color="#2dffc3" />
+        <StatCard icon="★" label="Net Savings" value={`₹${Number(finance?.net_savings ?? 0).toLocaleString("en-IN")}`} color="#2dffc3" />
       </div>
 
       {/* ── Charts row ── */}
@@ -85,11 +85,11 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={finance?.monthly_trend ?? []} barGap={4} barSize={10}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" tick={{ fill:"#52525e", fontSize:11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill:"#52525e", fontSize:11 }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v/1000}k`} />
+              <XAxis dataKey="month" tick={{ fill: "#52525e", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#52525e", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v / 1000}k`} />
               <Tooltip content={customTooltip} />
-              <Bar dataKey="income"  fill="#a8ff57" name="Income"  radius={[4,4,0,0]} />
-              <Bar dataKey="expense" fill="#ff5b5b" name="Expense" radius={[4,4,0,0]} />
+              <Bar dataKey="income" fill="#a8ff57" name="Income" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" fill="#ff5b5b" name="Expense" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -101,17 +101,17 @@ export default function Dashboard() {
             <PieChart>
               <Pie
                 data={[
-                  { name:"Active",    value: memberStats?.active    ?? 0 },
-                  { name:"Expired",   value: memberStats?.expired   ?? 0 },
-                  { name:"Cancelled", value: memberStats?.cancelled ?? 0 },
+                  { name: "Active", value: memberStats?.active ?? 0 },
+                  { name: "Expired", value: memberStats?.expired ?? 0 },
+                  { name: "Cancelled", value: memberStats?.cancelled ?? 0 },
                 ]}
                 cx="50%" cy="50%" innerRadius={60} outerRadius={90}
                 paddingAngle={3} dataKey="value"
               >
-                {["#a8ff57","#ff5b5b","#52525e"].map((c,i) => <Cell key={i} fill={c} />)}
+                {["#a8ff57", "#ff5b5b", "#52525e"].map((c, i) => <Cell key={i} fill={c} />)}
               </Pie>
-              <Tooltip formatter={(v,n) => [v, n]} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize:"12px", color:"#9090a0" }} />
+              <Tooltip formatter={(v, n) => [v, n]} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px", color: "#9090a0" }} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -122,8 +122,8 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={finance?.monthly_trend ?? []}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="month" tick={{ fill:"#52525e", fontSize:11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill:"#52525e", fontSize:11 }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v/1000}k`} />
+              <XAxis dataKey="month" tick={{ fill: "#52525e", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#52525e", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v / 1000}k`} />
               <Tooltip content={customTooltip} />
               <Line dataKey="savings" stroke="#2dffc3" strokeWidth={2.5} dot={false} name="Savings" />
             </LineChart>
@@ -133,7 +133,7 @@ export default function Dashboard() {
 
       {/* ── Expiring soon table ── */}
       {expiring.length > 0 && (
-        <div className="card" style={{ marginTop:24 }}>
+        <div className="card" style={{ marginTop: 24 }}>
           <div className="dash-table-header">
             <span className="dash-chart-title">⚠ Memberships Expiring in 7 Days</span>
             <span className="badge badge-yellow">{expiring.length} members</span>
@@ -147,11 +147,11 @@ export default function Dashboard() {
                 {expiring.map(m => (
                   <tr key={m.id}>
                     <td><b>{m.name}</b></td>
-                    <td style={{color:"var(--text3)"}}>{m.phone}</td>
+                    <td style={{ color: "var(--text3)" }}>{m.phone}</td>
                     <td>{m.plan_name || "—"}</td>
-                    <td style={{color:"var(--warn)"}}>{m.renewal_date}</td>
+                    <td style={{ color: "var(--warn)" }}>{m.renewal_date}</td>
                     <td>
-                      <span className={`badge ${m.days_until_expiry <= 2 ? "badge-red":"badge-yellow"}`}>
+                      <span className={`badge ${m.days_until_expiry <= 2 ? "badge-red" : "badge-yellow"}`}>
                         {m.days_until_expiry}d
                       </span>
                     </td>

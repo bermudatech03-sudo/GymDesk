@@ -38,12 +38,15 @@ class FinanceSummaryView(APIView):
 
         inc = Income.objects.filter(date__year=year, date__month=month)
         exp = Expenditure.objects.filter(date__year=year, date__month=month)
-
+        
         total_income  = inc.aggregate(t=Sum("amount"))["t"] or 0
         total_gst     = inc.aggregate(t=Sum("gst_amount"))["t"] or 0
         total_base    = inc.aggregate(t=Sum("base_amount"))["t"] or 0
         total_expense = exp.aggregate(t=Sum("amount"))["t"] or 0
-        savings       = total_income - total_expense
+
+        all_income  = Income.objects.aggregate(t=Sum("amount"))["t"] or 0
+        all_expense = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
+        net_savings = all_income - all_expense
 
         # 12-month trend
         monthly = []
@@ -75,7 +78,7 @@ class FinanceSummaryView(APIView):
             "total_base_income":    float(total_base),
             "total_gst_collected":  float(total_gst),
             "total_expense":        float(total_expense),
-            "savings":              float(savings),
+            "net_savings":          float(net_savings),
             "outstanding_balance":  float(outstanding),
             "monthly_trend":        monthly,
             "income_by_category":   inc_by_cat,

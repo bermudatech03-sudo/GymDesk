@@ -229,6 +229,7 @@ export default function Attendance() {
             <span>Staff Attendance</span>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
               <span className="badge badge-green">{sPresent} present</span>
+              <span className="badge badge-red">{sAbsent} absent</span>
               {sLate     > 0 && <span className="badge badge-orange">{sLate} late</span>}
               {sOvertime > 0 && <span className="badge badge-blue">{sOvertime} OT</span>}
               {sAbsent   > 0 && <span className="badge badge-red">{sAbsent} absent</span>}

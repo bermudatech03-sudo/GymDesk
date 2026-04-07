@@ -6,6 +6,8 @@ from .serializers import CustomTokenObtainPairSerializer, UserSerializer, Change
 import logging
 from apps.staff.models import StaffMember, StaffAttendance
 from apps.members.models import Member, MemberAttendance
+from rest_framework import generics, status, permissions
+from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 class LoginView(TokenObtainPairView):

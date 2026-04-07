@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
-import "./Plans.css";
+import "./plans.css";
 import ConfirmModal from "../../components/ConfirmModal";
 
 function PlanModal({ plan, onClose, onSave }) {

@@ -1,11 +1,13 @@
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import User
 from .serializers import CustomTokenObtainPairSerializer, UserSerializer, ChangePasswordSerializer
+import logging
+from apps.staff.models import StaffMember, StaffAttendance
+from apps.members.models import Member, MemberAttendance
 
+logger = logging.getLogger(__name__)
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = [permissions.AllowAny]

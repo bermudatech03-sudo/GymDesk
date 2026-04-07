@@ -1,16 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
-import { useEffect } from "react";
 import "./Settings.css";
+
+const GYM_FIELDS = [
+  { key: "GYM_NAME",           label: "Gym Name",              type: "text" },
+  { key: "GYM_ADDRESS",        label: "Address",               type: "text" },
+  { key: "GYM_PHONE",          label: "Phone",                 type: "text" },
+  { key: "GYM_EMAIL",          label: "Email",                 type: "email" },
+  { key: "GYM_GSTIN",          label: "GSTIN",                 type: "text" },
+  { key: "GST_RATE",           label: "GST Rate (%)",          type: "number" },
+  { key: "PT_PAYABLE_PERCENT", label: "PT Payable to Trainer (%)", type: "number" },
+];
 
 export default function Settings() {
   const { user } = useAuth();
   const [pw, setPw] = useState({ old_password:"", new_password:"", confirm:"" });
   const [saving, setSaving] = useState(false);
+  const [gymSettings, setGymSettings] = useState({});
+  const [gymSaving, setGymSaving] = useState(false);
 
   useEffect(() => { document.getElementById("page-title").textContent = "Settings"; }, []);
+
+  useEffect(() => {
+    api.get("/finances/gym-settings/").then(r => setGymSettings(r.data)).catch(() => {});
+  }, []);
+
+  const saveGymSettings = async (e) => {
+    e.preventDefault();
+    setGymSaving(true);
+    try {
+      const res = await api.patch("/finances/gym-settings/", gymSettings);
+      setGymSettings(res.data);
+      toast.success("Gym settings saved!");
+    } catch { toast.error("Failed to save settings."); }
+    finally { setGymSaving(false); }
+  };
 
   const changePassword = async (e) => {
     e.preventDefault();
@@ -48,6 +74,33 @@ export default function Settings() {
               <span className="badge badge-green" style={{marginTop:4}}>{user?.role}</span>
             </div>
           </div>
+        </div>
+
+        {/* Gym Settings */}
+        <div className="card" style={{ padding: 24, gridColumn: "1/-1" }}>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 18 }}>
+            Gym Settings
+          </div>
+          <form onSubmit={saveGymSettings}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14, marginBottom: 18 }}>
+              {GYM_FIELDS.map(({ key, label, type }) => (
+                <div className="form-group" key={key}>
+                  <label className="form-label">{label}</label>
+                  <input
+                    className="form-input"
+                    type={type}
+                    min={type === "number" ? "0" : undefined}
+                    max={type === "number" && key !== "GST_RATE" ? "100" : undefined}
+                    value={gymSettings[key] ?? ""}
+                    onChange={e => setGymSettings(p => ({ ...p, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={gymSaving}>
+              {gymSaving ? "Saving…" : "Save Gym Settings"}
+            </button>
+          </form>
         </div>
 
         {/* Change password */}

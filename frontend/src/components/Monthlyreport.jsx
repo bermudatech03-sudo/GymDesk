@@ -7,22 +7,22 @@ import XLSXStyle from "xlsx-js-style";
 import api from "../api/axios";
 import "./MonthlyReport.css";
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
-                "Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const CAT_LABELS = {
-  membership:"Membership", personal_training:"Personal Training",
-  merchandise:"Merchandise", locker:"Locker Rental",
-  salary:"Staff Salary", equipment:"Equipment",
-  rent:"Rent & Utilities", supplies:"Supplies",
-  marketing:"Marketing", maintenance:"Maintenance", other:"Other",
+  membership: "Membership", personal_training: "Personal Training",
+  merchandise: "Merchandise", locker: "Locker Rental",
+  salary: "Staff Salary", equipment: "Equipment",
+  rent: "Rent & Utilities", supplies: "Supplies",
+  marketing: "Marketing", maintenance: "Maintenance", other: "Other",
 };
 
 export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
   const now = new Date();
-  const [month,   setMonth]   = useState(defaultMonth || now.getMonth() + 1);
-  const [year,    setYear]    = useState(defaultYear  || now.getFullYear());
-  const [report,  setReport]  = useState(null);
+  const [month, setMonth] = useState(defaultMonth || now.getMonth() + 1);
+  const [year, setYear] = useState(defaultYear || now.getFullYear());
+  const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
@@ -30,6 +30,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     try {
       const res = await api.get(`/finances/monthly-report/?year=${year}&month=${month}`);
       setReport(res.data);
+      console.log(res.data);
     } finally { setLoading(false); }
   };
 
@@ -108,9 +109,9 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
 </style>
 </head><body>${html}</body></html>`;
     const blob = new Blob([full], { type: "text/html" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
     a.download = `Finance_Report_${MONTHS[month - 1]}_${year}.html`;
     a.click();
     URL.revokeObjectURL(url);
@@ -118,36 +119,40 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
 
   const handleExcelDownload = () => {
     // ── shared style helpers ────────────────────────────────────────────────
-    const DARK   = "1A1A2E";   // gym dark navy
-    const GREEN  = "2D6A4F";   // header green
-    const LTGRN  = "D8F3DC";   // income row tint
-    const LTRED  = "FFE8E8";   // expense row tint
-    const GOLD   = "F9A825";   // total row accent
-    const TOTBG  = "FFF3CD";   // total row bg
+    const DARK = "1A1A2E";   // gym dark navy
+    const GREEN = "2D6A4F";   // header green
+    const LTGRN = "D8F3DC";   // income row tint
+    const LTRED = "FFE8E8";   // expense row tint
+    const GOLD = "F9A825";   // total row accent
+    const TOTBG = "FFF3CD";   // total row bg
 
-    const font    = (bold, color = "000000", sz = 10) => ({ bold, color: { rgb: color }, sz, name: "Calibri" });
-    const fill    = hex => ({ type: "pattern", pattern: "solid", fgColor: { rgb: hex } });
-    const border  = () => ({
-      top:    { style: "thin", color: { rgb: "CCCCCC" } },
+    const font = (bold, color = "000000", sz = 10) => ({ bold, color: { rgb: color }, sz, name: "Calibri" });
+    const fill = hex => ({ type: "pattern", pattern: "solid", fgColor: { rgb: hex } });
+    const border = () => ({
+      top: { style: "thin", color: { rgb: "CCCCCC" } },
       bottom: { style: "thin", color: { rgb: "CCCCCC" } },
-      left:   { style: "thin", color: { rgb: "CCCCCC" } },
-      right:  { style: "thin", color: { rgb: "CCCCCC" } },
+      left: { style: "thin", color: { rgb: "CCCCCC" } },
+      right: { style: "thin", color: { rgb: "CCCCCC" } },
     });
-    const align   = (h, wrapText = false) => ({ horizontal: h, vertical: "center", wrapText });
+    const align = (h, wrapText = false) => ({ horizontal: h, vertical: "center", wrapText });
 
     const hdrStyle = (bg = GREEN) => ({ font: font(true, "FFFFFF", 10), fill: fill(bg), border: border(), alignment: align("center") });
     const titleStyle = () => ({ font: font(true, "FFFFFF", 13), fill: fill(DARK), alignment: align("center") });
     const totalStyle = (color = "000000") => ({
       font: font(true, color, 10), fill: fill(TOTBG),
-      border: { top: { style: "medium", color: { rgb: GOLD } }, bottom: { style: "medium", color: { rgb: GOLD } },
-                left: border().left, right: border().right },
+      border: {
+        top: { style: "medium", color: { rgb: GOLD } }, bottom: { style: "medium", color: { rgb: GOLD } },
+        left: border().left, right: border().right
+      },
       alignment: align("center"),
     });
     const dataStyle = (bg = "FFFFFF", bold = false, color = "333333", h = "left") =>
       ({ font: font(bold, color, 10), fill: fill(bg), border: border(), alignment: align(h) });
     const numStyle = (bg = "FFFFFF", bold = false, color = "1A5C1A") =>
-      ({ font: font(bold, color, 10), fill: fill(bg), border: border(), alignment: align("right"),
-         numFmt: '₹#,##0.00' });
+    ({
+      font: font(bold, color, 10), fill: fill(bg), border: border(), alignment: align("right"),
+      numFmt: '₹#,##0.00'
+    });
 
     // helper: write a 2D array of { v, s } cells into a worksheet
     const buildSheet = (rows2d, colWidths) => {
@@ -168,46 +173,46 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     };
 
     const periodLabel = `${MONTHS[month - 1]} ${year}`;
-    const gymName     = report.gym?.name || "Gym";
+    const gymName = report.gym?.name || "Gym";
 
     // ── INCOME SHEET ──────────────────────────────────────────────────────
-    const incHdrs = ["Date","Invoice","Source","Category","Base Amount","GST %","GST Amt","Plan Total","Paid Now","Mode"];
-    const incData  = report.incomes || [];
+    const incHdrs = ["Date", "Invoice", "Source", "Category", "Base Amount", "GST %", "GST Amt", "Plan Total", "Amt Paid", "Mode"];
+    const incData = report.incomes || [];
 
     const incRows2d = [
       // Title row spanning all cols (only cell A1 filled; Excel merge done below)
       [{ v: `${gymName} — Income Report — ${periodLabel}`, s: titleStyle() },
-       ...Array(incHdrs.length - 1).fill({ v: "", s: titleStyle() })],
+      ...Array(incHdrs.length - 1).fill({ v: "", s: titleStyle() })],
       // Header row
       incHdrs.map(h => ({ v: h, s: hdrStyle(GREEN) })),
       // Data rows — alternating tint
       ...incData.map((i, idx) => {
         const bg = idx % 2 === 0 ? "FFFFFF" : LTGRN;
         return [
-          { v: i.date,                                              s: dataStyle(bg) },
-          { v: i.invoice_number || "—",                            s: dataStyle(bg, false, "555555") },
-          { v: i.source,                                            s: dataStyle(bg, false, "333333", "left") },
-          { v: CAT_LABELS[i.category] || i.category,               s: dataStyle(bg) },
-          { v: Number(i.base_amount || 0),                         s: numStyle(bg), numFmt: '₹#,##0.00' },
-          { v: Number(i.gst_rate   || 0),                          s: dataStyle(bg, false, "CC5500", "center") },
-          { v: Number(i.gst_amount || 0),                          s: numStyle(bg), numFmt: '₹#,##0.00' },
-          { v: i.plan_total != null ? Number(i.plan_total) : "",   s: numStyle(bg), numFmt: '₹#,##0.00' },
-          { v: Number(i.amount || 0),                              s: numStyle(bg, true, "1A5C1A"), numFmt: '₹#,##0.00' },
-          { v: (i.mode_of_payment || "cash").toUpperCase(),        s: dataStyle(bg, false, "1A3A9A", "center") },
+          { v: i.date, s: dataStyle(bg) },
+          { v: i.invoice_number || "—", s: dataStyle(bg, false, "555555") },
+          { v: i.source, s: dataStyle(bg, false, "333333", "left") },
+          { v: CAT_LABELS[i.category] || i.category, s: dataStyle(bg) },
+          { v: Number(i.base_amount || 0), s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: Number(i.gst_rate || 0), s: dataStyle(bg, false, "CC5500", "center") },
+          { v: Number(i.gst_amount || 0), s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: i.plan_total != null ? Number(i.plan_total) : "", s: numStyle(bg), numFmt: '₹#,##0.00' },
+          { v: Number(i.amount || 0), s: numStyle(bg, true, "1A5C1A"), numFmt: '₹#,##0.00' },
+          { v: (i.mode_of_payment || "cash").toUpperCase(), s: dataStyle(bg, false, "1A3A9A", "center") },
         ];
       }),
       // Total row
       [
-        { v: "TOTAL",                           s: totalStyle() },
-        { v: "",                                s: totalStyle() },
-        { v: "",                                s: totalStyle() },
+        { v: "TOTAL", s: totalStyle() },
+        { v: "", s: totalStyle() },
+        { v: "", s: totalStyle() },
         { v: `${incData.length} transaction${incData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
-        { v: Number(report.total_base    || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
-        { v: "",                                s: totalStyle() },
-        { v: Number(report.total_gst     || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
-        { v: "",                                s: totalStyle() },
-        { v: Number(report.total_income  || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
-        { v: "",                                s: totalStyle() },
+        { v: Number(report.total_base || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
+        { v: "", s: totalStyle() },
+        { v: Number(report.total_gst || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
+        { v: "", s: totalStyle() },
+        { v: Number(report.total_income || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
+        { v: "", s: totalStyle() },
       ],
     ];
     const wsIncome = buildSheet(incRows2d, [11, 13, 22, 16, 13, 7, 12, 13, 12, 10]);
@@ -216,29 +221,29 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     wsIncome["!freeze"] = { xSplit: 0, ySplit: 2 };  // freeze title + header
 
     // ── EXPENSE SHEET ─────────────────────────────────────────────────────
-    const expHdrs = ["Date","Description","Category","Vendor","Amount"];
-    const expData  = report.expenses || [];
+    const expHdrs = ["Date", "Description", "Category", "Vendor", "Amount"];
+    const expData = report.expenses || [];
 
     const expRows2d = [
       [{ v: `${gymName} — Expenses — ${periodLabel}`, s: titleStyle() },
-       ...Array(expHdrs.length - 1).fill({ v: "", s: titleStyle() })],
+      ...Array(expHdrs.length - 1).fill({ v: "", s: titleStyle() })],
       expHdrs.map(h => ({ v: h, s: hdrStyle("C0392B") })),
       ...expData.map((e, idx) => {
         const bg = idx % 2 === 0 ? "FFFFFF" : LTRED;
         return [
-          { v: e.date,                                  s: dataStyle(bg) },
-          { v: e.description,                           s: dataStyle(bg, false, "333333", "left") },
-          { v: CAT_LABELS[e.category] || e.category,   s: dataStyle(bg) },
-          { v: e.vendor || "—",                         s: dataStyle(bg, false, "555555") },
-          { v: Number(e.amount || 0),                   s: numStyle(bg, false, "CC0000"), numFmt: '₹#,##0.00' },
+          { v: e.date, s: dataStyle(bg) },
+          { v: e.description, s: dataStyle(bg, false, "333333", "left") },
+          { v: CAT_LABELS[e.category] || e.category, s: dataStyle(bg) },
+          { v: e.vendor || "—", s: dataStyle(bg, false, "555555") },
+          { v: Number(e.amount || 0), s: numStyle(bg, false, "CC0000"), numFmt: '₹#,##0.00' },
         ];
       }),
       [
-        { v: "TOTAL",                              s: totalStyle() },
-        { v: "",                                   s: totalStyle() },
-        { v: "",                                   s: totalStyle() },
+        { v: "TOTAL", s: totalStyle() },
+        { v: "", s: totalStyle() },
+        { v: "", s: totalStyle() },
         { v: `${expData.length} transaction${expData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
-        { v: Number(report.total_expense || 0),    s: totalStyle("CC0000"), numFmt: '₹#,##0.00' },
+        { v: Number(report.total_expense || 0), s: totalStyle("CC0000"), numFmt: '₹#,##0.00' },
       ],
     ];
     const wsExpense = buildSheet(expRows2d, [11, 32, 18, 20, 14]);
@@ -249,24 +254,32 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     const net = Number(report.net || 0);
     const summaryRows2d = [
       [{ v: `${gymName} — Finance Summary — ${periodLabel}`, s: titleStyle() },
-       { v: "", s: titleStyle() }],
+      { v: "", s: titleStyle() }],
       [{ v: "Description", s: hdrStyle(DARK) }, { v: "Amount", s: hdrStyle(DARK) }],
-      [{ v: "Total Income (incl. GST)",  s: dataStyle("D8F3DC", true, "2D6A4F") },
-       { v: Number(report.total_income  || 0), s: numStyle("D8F3DC", true, "2D6A4F"), numFmt: '₹#,##0.00' }],
-      [{ v: "GST Collected",             s: dataStyle("E8F4FD", false, "1A3A9A") },
-       { v: Number(report.total_gst     || 0), s: numStyle("E8F4FD", false, "1A3A9A"), numFmt: '₹#,##0.00' }],
-      [{ v: "Taxable Base Income",       s: dataStyle("FFFFFF") },
-       { v: Number(report.total_base    || 0), s: numStyle("FFFFFF"), numFmt: '₹#,##0.00' }],
-      [{ v: "Total Expenses",            s: dataStyle("FFE8E8", false, "CC0000") },
-       { v: Number(report.total_expense || 0), s: numStyle("FFE8E8", false, "CC0000"), numFmt: '₹#,##0.00' }],
+      [{ v: "Total Income (incl. GST)", s: dataStyle("D8F3DC", true, "2D6A4F") },
+      { v: Number(report.total_income || 0), s: numStyle("D8F3DC", true, "2D6A4F"), numFmt: '₹#,##0.00' }],
+      [{ v: "GST Collected", s: dataStyle("E8F4FD", false, "1A3A9A") },
+      { v: Number(report.total_gst || 0), s: numStyle("E8F4FD", false, "1A3A9A"), numFmt: '₹#,##0.00' }],
+      [{ v: "Taxable Base Income", s: dataStyle("FFFFFF") },
+      { v: Number(report.total_base || 0), s: numStyle("FFFFFF"), numFmt: '₹#,##0.00' }],
+      [{ v: "Total Expenses", s: dataStyle("FFE8E8", false, "CC0000") },
+      { v: Number(report.total_expense || 0), s: numStyle("FFE8E8", false, "CC0000"), numFmt: '₹#,##0.00' }],
       // Divider
       [{ v: "", s: dataStyle("EEEEEE") }, { v: "", s: dataStyle("EEEEEE") }],
       // Net P&L row — green if profit, red if loss
-      [{ v: "NET PROFIT / LOSS", s: { font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
-          fill: fill(net >= 0 ? "2D6A4F" : "C0392B"), border: border(), alignment: align("left") } },
-       { v: net, s: { font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
+      [{
+        v: "NET PROFIT / LOSS", s: {
+          font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
+          fill: fill(net >= 0 ? "2D6A4F" : "C0392B"), border: border(), alignment: align("left")
+        }
+      },
+      {
+        v: net, s: {
+          font: font(true, net >= 0 ? "FFFFFF" : "FFFFFF", 12),
           fill: fill(net >= 0 ? "2D6A4F" : "C0392B"), border: border(), alignment: align("right"),
-          numFmt: '₹#,##0.00' }, numFmt: '₹#,##0.00' }],
+          numFmt: '₹#,##0.00'
+        }, numFmt: '₹#,##0.00'
+      }],
     ];
     const wsSummary = buildSheet(summaryRows2d, [32, 18]);
     wsSummary["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
@@ -274,7 +287,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
 
     // ── Build workbook ─────────────────────────────────────────────────────
     const wb = XLSXStyle.utils.book_new();
-    XLSXStyle.utils.book_append_sheet(wb, wsIncome,  "Income");
+    XLSXStyle.utils.book_append_sheet(wb, wsIncome, "Income");
     XLSXStyle.utils.book_append_sheet(wb, wsExpense, "Expenses");
     XLSXStyle.utils.book_append_sheet(wb, wsSummary, "Summary");
     XLSXStyle.writeFile(wb, `Finance_Report_${MONTHS[month - 1]}_${year}.xlsx`);
@@ -288,15 +301,15 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
 
         {/* ── Sticky controls bar ── */}
         <div className="report-controls no-print">
-          <div style={{ display:"flex", gap:10, alignItems:"center", flex:1, flexWrap:"wrap" }}>
-            <span style={{ fontFamily:"var(--font-display)", fontSize:15, fontWeight:700 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 700 }}>
               Monthly Finance Report
             </span>
-            <select className="form-input" style={{ maxWidth:100 }} value={month}
+            <select className="form-input" style={{ maxWidth: 100 }} value={month}
               onChange={e => setMonth(+e.target.value)}>
               {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
-            <select className="form-input" style={{ maxWidth:90 }} value={year}
+            <select className="form-input" style={{ maxWidth: 90 }} value={year}
               onChange={e => setYear(+e.target.value)}>
               {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
@@ -304,7 +317,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               {loading ? "Loading…" : "Load"}
             </button>
           </div>
-          <div style={{ display:"flex", gap:8 }}>
+          <div style={{ display: "flex", gap: 8 }}>
             {report && (
               <>
                 <button className="btn btn-secondary btn-sm" onClick={handleDownload}>
@@ -320,7 +333,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
         </div>
 
         {loading && (
-          <div style={{ textAlign:"center", padding:48, color:"var(--text3)", fontSize:14 }}>
+          <div style={{ textAlign: "center", padding: 48, color: "var(--text3)", fontSize: 14 }}>
             Loading report…
           </div>
         )}
@@ -344,12 +357,14 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               {/* ── Summary grid ── */}
               <div className="summary-grid">
                 {[
-                  { lbl:"Total Income (incl. GST)", val:fmt(report.total_income),  cls:"s-green" },
-                  { lbl:"GST Collected",            val:fmt(report.total_gst),     cls:"s-blue"  },
-                  { lbl:"Taxable Base Income",      val:fmt(report.total_base),    cls:""        },
-                  { lbl:"Total Expenses",           val:fmt(report.total_expense), cls:"s-red"   },
-                  { lbl:"Net Profit / Loss",        val:fmt(report.net),
-                    cls: (report.net >= 0) ? "s-green" : "s-red" },
+                  { lbl: "Total Income (incl. GST)", val: fmt(report.total_income), cls: "s-green" },
+                  { lbl: "GST Collected", val: fmt(report.total_gst), cls: "s-blue" },
+                  { lbl: "Taxable Base Income", val: fmt(report.total_base), cls: "" },
+                  { lbl: "Total Expenses", val: fmt(report.total_expense), cls: "s-red" },
+                  {
+                    lbl: "Net Profit / Loss", val: fmt(report.net),
+                    cls: (report.net >= 0) ? "s-green" : "s-red"
+                  },
                 ].map(b => (
                   <div key={b.lbl} className="summary-box">
                     <div className="s-lbl">{b.lbl}</div>
@@ -366,16 +381,16 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               <div className="rp-table-wrap">
                 <table className="rp-table income-table">
                   <colgroup>
-                    <col className="col-date"/>
-                    <col className="col-inv"/>
-                    <col className="col-src"/>
-                    <col className="col-cat"/>
-                    <col className="col-base"/>
-                    <col className="col-gp"/>
-                    <col className="col-gamt"/>
-                    <col className="col-plan"/>
-                    <col className="col-paid"/>
-                    <col className="col-mode"/>
+                    <col className="col-date" />
+                    <col className="col-inv" />
+                    <col className="col-src" />
+                    <col className="col-cat" />
+                    <col className="col-base" />
+                    <col className="col-gp" />
+                    <col className="col-gamt" />
+                    <col className="col-plan" />
+                    <col className="col-paid" />
+                    <col className="col-mode" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -387,7 +402,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <th className="c">GST %</th>
                       <th className="r">GST Amt</th>
                       <th className="r">Plan Total</th>
-                      <th className="r">Paid Now</th>
+                      <th className="r">Amt Paid</th>
                       <th className="c">Mode</th>
                     </tr>
                   </thead>
@@ -425,7 +440,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                         <td className="r" style={{ fontWeight: 700 }}>
                           ₹{Number(i.amount).toLocaleString("en-IN")}
                         </td>
-                        <td className="c" style={{ textTransform:"uppercase", fontSize:10, fontWeight:700, color:"var(--text2,#555)" }}>
+                        <td className="c" style={{ textTransform: "uppercase", fontSize: 10, fontWeight: 700, color: "var(--text2,#555)" }}>
                           {(i.mode_of_payment || "cash").toUpperCase()}
                         </td>
                       </tr>
@@ -444,16 +459,16 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               </div>
 
               {/* ── Expense table ── */}
-              <div className="rp-section-title" style={{ marginTop:24 }}>
+              <div className="rp-section-title" style={{ marginTop: 24 }}>
                 <span>Expense Transactions</span>
                 <span className="count">{report.expenses?.length || 0} records</span>
               </div>
               <div className="rp-table-wrap">
                 <table className="rp-table expense-table">
                   <colgroup>
-                    <col className="col-date"/><col className="col-desc"/>
-                    <col className="col-cat"/><col className="col-vendor"/>
-                    <col className="col-amt"/>
+                    <col className="col-date" /><col className="col-desc" />
+                    <col className="col-cat" /><col className="col-vendor" />
+                    <col className="col-amt" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -485,7 +500,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               </div>
 
               {/* ── GST Summary ── */}
-              <div className="rp-section-title" style={{ marginTop:24 }}>
+              <div className="rp-section-title" style={{ marginTop: 24 }}>
                 <span>GST Summary (for filing)</span>
               </div>
               <table className="gst-table">
@@ -510,7 +525,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               </table>
 
               {/* ── Profit / Loss summary ── */}
-              <div className="rp-section-title" style={{ marginTop:24 }}>
+              <div className="rp-section-title" style={{ marginTop: 24 }}>
                 <span>Profit &amp; Loss Summary</span>
               </div>
               <table className="gst-table">
@@ -538,7 +553,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
             <div className="rp-footer">
               Generated on {new Date().toLocaleDateString("en-IN")}
               &nbsp;·&nbsp; {report.gym?.name}
-              &nbsp;·&nbsp; GSTIN: {report.gym?.gstin || "N/A"}<br/>
+              &nbsp;·&nbsp; GSTIN: {report.gym?.gstin || "N/A"}<br />
               This report is auto-generated by GymPro CRM. For internal use only.
             </div>
 

@@ -3,15 +3,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Sum
 from django.utils import timezone
-from django.conf import settings as django_settings
-from decimal import Decimal
 import calendar
-from .models import Income, Expenditure
+from .models import Income, Expenditure, GymSetting
 from .serializers import IncomeSerializer, ExpenditureSerializer
-
-
-def get_gst_rate():
-    return Decimal(str(getattr(django_settings, "GST_RATE", 18)))
+from .gst_utils import get_gst_rate, get_gym_info
 
 
 class IncomeViewSet(viewsets.ModelViewSet):
@@ -89,6 +84,9 @@ class FinanceSummaryView(APIView):
 class MonthlyReportView(APIView):
     """Returns full detail for GST report — all transactions for the month."""
     def get(self, request):
+        from collections import defaultdict
+        from decimal import Decimal
+
         today = timezone.localdate()
         year  = int(request.query_params.get("year",  today.year))
         month = int(request.query_params.get("month", today.month))
@@ -97,24 +95,11 @@ class MonthlyReportView(APIView):
         expenses = Expenditure.objects.filter(date__year=year, date__month=month).order_by("date")
 
         total_income   = incomes.aggregate(t=Sum("amount"))["t"]     or 0
-        total_gst      = incomes.aggregate(t=Sum("gst_amount"))["t"] or 0
-        total_base     = incomes.aggregate(t=Sum("base_amount"))["t"] or 0
         total_expense  = expenses.aggregate(t=Sum("amount"))["t"]    or 0
 
-        gym = {
-            "name":    getattr(django_settings, "GYM_NAME",    "Gym"),
-            "address": getattr(django_settings, "GYM_ADDRESS", ""),
-            "phone":   getattr(django_settings, "GYM_PHONE",   ""),
-            "email":   getattr(django_settings, "GYM_EMAIL",   ""),
-            "gstin":   getattr(django_settings, "GYM_GSTIN",   ""),
-        }
+        gym = get_gym_info()
 
         def _parse_note_field(notes, key):
-            """
-            Extracts a keyed value embedded in the notes field.
-            Format: '... | key:value'
-            Returns the string value or None if not present.
-            """
             if not notes:
                 return None
             for part in notes.split("|"):
@@ -123,12 +108,80 @@ class MonthlyReportView(APIView):
                     return part.split(":", 1)[1].strip()
             return None
 
-        # Serialize incomes and attach plan_total + mode_of_payment per row
-        income_data = IncomeSerializer(incomes, many=True).data
-        for i, income_obj in enumerate(incomes):
-            pt = _parse_note_field(income_obj.notes, "plan_total")
-            income_data[i]["plan_total"] = float(pt) if pt is not None else None
-            income_data[i]["mode_of_payment"] = _parse_note_field(income_obj.notes, "mode") or "cash"
+        # ── Group incomes by invoice_number ──────────────────────────────────
+        # Enrollment + balance-payment rows share the same invoice number.
+        # Merge them into one row showing the full plan totals.
+        invoice_groups = defaultdict(list)
+        standalone     = []
+
+        for income in incomes:
+            if income.invoice_number:
+                invoice_groups[income.invoice_number].append(income)
+            else:
+                standalone.append(income)
+
+        # ── Load MemberPayments as source of truth for plan totals ────────────
+        # The Income.notes plan_total is written at enrollment time and goes stale
+        # when a trainer assignment later updates the payment (adds PT fee).
+        # MemberPayment.total_with_gst is always up-to-date.
+        from apps.members.models import MemberPayment as _MemberPayment
+        inv_nos = [i.invoice_number for i in incomes if i.invoice_number]
+        payments_by_inv = {
+            mp.invoice_number: mp
+            for mp in _MemberPayment.objects.filter(invoice_number__in=inv_nos)
+        }
+
+        merged_incomes = []
+
+        for income in incomes:
+            mp = payments_by_inv.get(income.invoice_number) if income.invoice_number else None
+            rate        = Decimal(str(income.gst_rate or 0))
+            amount      = Decimal(str(income.amount))
+            base_amount = Decimal(str(income.base_amount))
+            gst_amount  = Decimal(str(income.gst_amount))
+            
+            pt_str = _parse_note_field(income.notes, "plan_total")
+            plan_total = Decimal(str(pt_str)) if pt_str else (base_amount+gst_amount)
+
+            if mp:
+                plan_total = Decimal(str(mp.total_with_gst))
+
+            merged_incomes.append({
+                "id":             income.id,
+                "date":           str(income.date),
+                "invoice_number": income.invoice_number,
+                "source":         income.source,
+                "category":       income.category,
+                "base_amount":    float(base_amount),
+                "gst_rate":       float(rate),
+                "gst_amount":     float(gst_amount),
+                "plan_total":     float(plan_total),
+                "amount":         float(amount),
+                "mode_of_payment": _parse_note_field(income.notes,"mode") or "cash" ,
+            })
+
+        for income in standalone:
+            pt_str = _parse_note_field(income.notes, "plan_total")
+            plan_total = float(pt_str) if pt_str else float(income.base_amount + income.gst_amount)
+            merged_incomes.append({
+                "id":             income.id,
+                "date":           str(income.date),
+                "invoice_number": income.invoice_number,
+                "source":         income.source,
+                "category":       income.category,
+                "base_amount":    float(income.base_amount),
+                "gst_rate":       float(income.gst_rate),
+                "gst_amount":     float(income.gst_amount),
+                "plan_total":     plan_total,
+                "amount":         float(income.amount),
+                "mode_of_payment": _parse_note_field(income.notes, "mode") or "cash",
+            })
+
+        merged_incomes.sort(key=lambda x: x["date"])
+
+        # Summary totals derived from merged rows (plan-level, not installment-level)
+        total_base = sum(r["base_amount"] for r in merged_incomes)
+        total_gst  = sum(r["gst_amount"]  for r in merged_incomes)
 
         return Response({
             "gym":           gym,
@@ -136,11 +189,11 @@ class MonthlyReportView(APIView):
             "year":          year,
             "month_name":    calendar.month_name[month],
             "total_income":  float(total_income),
-            "total_base":    float(total_base),
-            "total_gst":     float(total_gst),
+            "total_base":    total_base,
+            "total_gst":     total_gst,
             "total_expense": float(total_expense),
             "net":           float(total_income - total_expense),
-            "incomes":       income_data,           # now includes plan_total per row
+            "incomes":       merged_incomes,
             "expenses":      ExpenditureSerializer(expenses, many=True).data,
         })
 
@@ -148,6 +201,16 @@ class MonthlyReportView(APIView):
 class GSTRateView(APIView):
     def get(self, request):
         return Response({"gst_rate": float(get_gst_rate())})
+
+
+class GymSettingsView(APIView):
+    def get(self, request):
+        return Response({s.key: s.value for s in GymSetting.objects.all()})
+
+    def patch(self, request):
+        for key, value in request.data.items():
+            GymSetting.objects.update_or_create(key=key, defaults={"value": str(value)})
+        return Response({s.key: s.value for s in GymSetting.objects.all()})
     
 class ToBuyView(APIView):
     def _serialize(self, item):

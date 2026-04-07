@@ -47,6 +47,20 @@ class Expenditure(models.Model):
     class Meta:
         ordering = ["-date"]
 
+class GymSetting(models.Model):
+    """
+    Key-value store for gym-wide configuration.
+    Add more keys here in the future without schema changes.
+    """
+    key        = models.CharField(max_length=100, unique=True)
+    value      = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.key} = {self.value}"
+
+
 class ToBuy(models.Model):
     PRIORITY = [("low","Low"), ("medium","Medium"), ("high","High")]
     STATUS = [("pending","Pending"), ("purchased","Purchased"),("cancelled","Cancelled")]

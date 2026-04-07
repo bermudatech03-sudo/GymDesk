@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from django.conf import settings as djconf
 from decimal import Decimal, ROUND_HALF_UP
 from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment
+from apps.finances.gst_utils import get_gst_rate as _get_gst_rate
 
 
 def _gst_rate():
-    return Decimal(str(getattr(djconf, "GST_RATE", 18)))
+    return _get_gst_rate()
 
 
 class PlanSerializer(serializers.ModelSerializer):
@@ -141,12 +141,15 @@ class AssignTrainerSerializer(serializers.Serializer):
 
 
 class TrainerAssignmentSerializer(serializers.ModelSerializer):
-    member_name  = serializers.CharField(source="member.name",   read_only=True)
-    member_display_id = serializers.SerializerMethodField()
-    trainer_name = serializers.CharField(source="trainer.name",  read_only=True)
+    member_name        = serializers.CharField(source="member.name",  read_only=True)
+    member_display_id  = serializers.SerializerMethodField()
+    trainer_name       = serializers.CharField(source="trainer.name", read_only=True)
     trainer_display_id = serializers.SerializerMethodField()
-    plan_name    = serializers.CharField(source="plan.name",     read_only=True, allow_null=True)
-    working_day_names = serializers.SerializerMethodField()
+    plan_name          = serializers.CharField(source="plan.name",    read_only=True, allow_null=True)
+    working_day_names  = serializers.SerializerMethodField()
+    trainer_pt_amt     = serializers.SerializerMethodField()
+    member_amount_paid = serializers.SerializerMethodField()
+    member_plan_total  = serializers.SerializerMethodField()
 
     class Meta:
         model  = TrainerAssignment
@@ -160,6 +163,24 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
 
     def get_working_day_names(self, obj):
         return obj.working_day_names
+
+    def get_trainer_pt_amt(self, obj):
+        from apps.finances.gst_utils import get_pt_payable_percent
+        from decimal import Decimal, ROUND_HALF_UP
+        amt = obj.trainer.personal_trainer_amt
+        if not amt:
+            return 0
+        pct = get_pt_payable_percent()
+        payable = (Decimal(str(amt)) * pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        return float(payable)
+
+    def get_member_amount_paid(self, obj):
+        payment = obj.member.payments.order_by("-created_at").first()
+        return float(payment.amount_paid) if payment else 0
+
+    def get_member_plan_total(self, obj):
+        payment = obj.member.payments.order_by("-created_at").first()
+        return float(payment.total_with_gst) if payment else 0
 
     def validate(self, data):
         if data.get("startingtime") and data.get("endingtime"):

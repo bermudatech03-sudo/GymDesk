@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Sum
 from apps.notifications.utils import send_notification, send_notification_admin
-from apps.members.models import Member
+from apps.members.models import Member, MemberAttendance
 from apps.finances.models import ToBuy,Expenditure,Income
 
 def send_renewal_reminders():
@@ -36,3 +36,10 @@ def send_daily_notice():
 
     for item in items:
         send_notification_admin(item,money_left,"daily_notice")
+
+def send_message_for_absentees():
+    today = timezone.now().date()
+    attended_ids = MemberAttendance.objects.filter(date=today).values_list("member_id", flat=True)
+    absentees = Member.objects.filter(status="active").exclude(id__in=attended_ids)
+    for member in absentees:
+        send_notification(member, "absent")

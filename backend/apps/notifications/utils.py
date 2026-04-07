@@ -1,4 +1,5 @@
 import logging
+from django.utils import timezone
 
 from gym_crm import settings
 from .models import Notification
@@ -11,6 +12,7 @@ TEMPLATES = {
     "enrollment":      "Hi {name}, welcome aboard! Your membership starts today and is valid until {date}. See you at the gym!",
     "expiry":          "Hi {name}, your gym membership expired on {date}. Renew now to regain access. We miss you!",
     "manual":          "Hi {name}, you have a notification from the gym.",
+    "absent":          "Hi {name}, you didnt came to gym on {date}. Please try to be consistent inoder to have a healthy life ",
     "daily_notice":    "Hi Admin,  You need to buy {itemName} and right now you have {moneyLeft} ruppes. You need to buy this {itemName} by {date}"
 }
 
@@ -21,9 +23,10 @@ def send_notification(member, trigger_type: str):
     The post_save signal in signals.py handles the actual WhatsApp dispatch automatically.
     """
     template = TEMPLATES.get(trigger_type, "Hi {name}.")
+    date = str(timezone.now().date()) if trigger_type == "absent" else str(member.renewal_date or "")
     body = template.format(
         name=member.name,
-        date=str(member.renewal_date or ""),
+        date=date,
     )
 
     # Normalise phone: strip spaces/dashes, ensure country code prefix

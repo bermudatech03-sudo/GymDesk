@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from django.utils import timezone
-from django.conf import settings as djconf
 from django.db.models import Sum, Q
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
@@ -15,17 +14,10 @@ from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, 
 from apps.notifications.utils import send_notification
 
 
-def _gst_rate():
-    return Decimal(str(getattr(djconf, "GST_RATE", 18)))
+from apps.finances.gst_utils import get_gst_rate as _get_gst_rate, get_gym_info as _gym_info
 
-def _gym_info():
-    return {
-        "name":    getattr(djconf, "GYM_NAME",    "Gym"),
-        "address": getattr(djconf, "GYM_ADDRESS", ""),
-        "phone":   getattr(djconf, "GYM_PHONE",   ""),
-        "email":   getattr(djconf, "GYM_EMAIL",   ""),
-        "gstin":   getattr(djconf, "GYM_GSTIN",   ""),
-    }
+def _gst_rate():
+    return _get_gst_rate()
 
 def _calc_gst(base_price):
     rate    = _gst_rate()
@@ -51,14 +43,13 @@ def _record_income_for_installment(member, payment, installment):
     """
     Records an Income entry for a single installment.
 
-    GST RULE:
-      - enrollment / renewal  → GST recorded IN FULL (payment.gst_amount).
-                                base_amount = installment amount − full GST.
-      - balance               → pure cash, gst_amount = 0, gst_rate = 0.
+    GST RULE (GST-first allocation):
+      - GST is paid off first across all installments for the same invoice.
+      - Each payment fills the remaining GST bucket first; the rest goes to base.
+      - Once GST is fully paid, all subsequent installments are 100% base amount.
 
-    plan_total (plan_price + gst = full plan value e.g. ₹14,160) is embedded
-    in notes as "plan_total:XXXXXX" so MonthlyReportView can surface it in
-    the report without a schema migration.
+    plan_total (plan_price + gst = full plan value) is embedded in notes as
+    "plan_total:XXXXXX" so MonthlyReportView can surface it in the report.
     """
     from apps.finances.models import Income
 
@@ -71,23 +62,24 @@ def _record_income_for_installment(member, payment, installment):
     }
     label = label_map.get(installment.installment_type, "Payment")
 
-    if installment.installment_type in ("enrollment", "renewal"):
-        gst_now  = payment.gst_amount
-        base_now = (amount_paid - gst_now).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        gst_rate = payment.gst_rate
-    else:
-        gst_now  = Decimal("0")
-        base_now = amount_paid
-        gst_rate = Decimal("0")
+    # How much GST has already been collected for this invoice across prior installments
+    already_paid_gst = (
+        Income.objects.filter(invoice_number=payment.invoice_number)
+        .aggregate(total=Sum("gst_amount"))["total"] or Decimal("0")
+    )
 
-    # Embed plan_total so the report can show "18% of ₹14,160"
+    gst_remaining = max(Decimal("0"), payment.gst_amount - already_paid_gst)
+    gst_now       = min(amount_paid, gst_remaining).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    base_now      = (amount_paid - gst_now).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    effective_rate = payment.gst_rate if gst_now > 0 else Decimal("0")
+
     plan_total = payment.total_with_gst
 
     Income.objects.create(
         source         = f"{label} — {member.name}",
         category       = "membership",
         base_amount    = base_now,
-        gst_rate       = gst_rate,
+        gst_rate       = effective_rate,
         gst_amount     = gst_now,
         amount         = amount_paid,
         date           = installment.paid_date,
@@ -269,13 +261,7 @@ class MemberViewSet(viewsets.ModelViewSet):
         bill_data   = None
 
         if plan:
-            pt_fee = Decimal("0")
-            if d.get("personal_trainer"):
-                if plan_type == "standard":
-                    pt_fee = Decimal("500")
-                elif plan_type == "premium":
-                    pt_fee = Decimal("1000")
-            base, gst_amt, total, rate = _calc_gst(plan.price + pt_fee)
+            base, gst_amt, total, rate = _calc_gst(plan.price)
             inv_no = _invoice_number(member.id, join)
 
             payment = MemberPayment.objects.create(
@@ -292,12 +278,13 @@ class MemberViewSet(viewsets.ModelViewSet):
             )
 
             if amount_paid > 0:
-                installment = _create_installment(
-                    payment, member, amount_paid, "enrollment",
-                    notes=d.get("notes", ""),
-                    mode_of_payment=d.get("mode_of_payment", "cash"),
-                )
-                _record_income_for_installment(member, payment, installment)
+                if not d.get("personal_trainer", False):
+                    installment = _create_installment(
+                        payment, member, amount_paid, "enrollment",
+                        notes=d.get("notes", ""),
+                        mode_of_payment=d.get("mode_of_payment", "cash"),
+                    )
+                    _record_income_for_installment(member, payment, installment)
 
             bill_data = _build_bill(member, payment, _gym_info())
 
@@ -652,18 +639,13 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _check_plan_eligibility(member):
-        """Returns (ok, error_msg). A member needs standard/premium plan with personal_trainer enabled, and member must have opted in."""
+        """Returns (ok, error_msg). A member needs standard/premium plan_type and must have opted in for personal trainer."""
         if not member.plan:
             return False, "Member has no membership plan. Assign a Standard or Premium plan first."
-        if member.plan.plans not in ("standard", "premium"):
+        if member.plan_type not in ("standard", "premium"):
             return False, (
                 f"Personal trainer is only available for Standard and Premium plans. "
-                f"This member is on the '{member.plan.get_plans_display()}' plan."
-            )
-        if not member.plan.personal_trainer:
-            return False, (
-                f"The plan '{member.plan.name}' does not include Personal Trainer. "
-                f"Enable Personal Trainer on this plan first."
+                f"This member is on the '{member.plan_type}' plan."
             )
         if not member.personal_trainer:
             return False, (
@@ -707,6 +689,27 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "; ".join(exc.messages)}, status=400)
 
         assignment.save()
+
+        # Update the member's latest payment to include the trainer's PT fee
+        if trainer.personal_trainer_amt:
+            latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
+            if latest_payment and latest_payment.plan:
+                base, gst_amt, total, rate = _calc_gst(
+                    latest_payment.plan.price + trainer.personal_trainer_amt
+                )
+                latest_payment.plan_price     = base
+                latest_payment.gst_amount     = gst_amt
+                latest_payment.total_with_gst = total
+                latest_payment.gst_rate       = rate
+                latest_payment.save()
+            amount_paid = Decimal(str(request.data.get("amount_paid",0)))
+            if amount_paid>0:
+                installment = _create_installment(
+                    latest_payment,member,amount_paid,"enrollment",notes=request.data.get("notes",""),mode_of_payment=request.data.get("mode_of_payment","cash"),
+                )
+                _record_income_for_installment(member, latest_payment,installment)
+        
+
         return Response(TrainerAssignmentSerializer(assignment).data, status=201)
 
     def update(self, request, *args, **kwargs):
@@ -739,4 +742,34 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "; ".join(exc.messages)}, status=400)
 
         assignment.save()
+        return Response(TrainerAssignmentSerializer(assignment).data)
+
+    @action(detail=True, methods=["post"], url_path="pay-trainer-fee")
+    def pay_trainer_fee(self, request, pk=None):
+        from apps.finances.models import Expenditure
+        from apps.finances.gst_utils import get_pt_payable_percent
+        assignment = self.get_object()
+
+        if assignment.trainer_fee_paid:
+            return Response({"detail": "Trainer fee already paid for this member."}, status=400)
+
+        pt_amt = assignment.trainer.personal_trainer_amt
+        if not pt_amt or pt_amt <= 0:
+            return Response({"detail": "This trainer has no PT fee configured."}, status=400)
+
+        pt_payable_pct = get_pt_payable_percent()
+        payable_amt    = (Decimal(str(pt_amt)) * pt_payable_pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+        Expenditure.objects.create(
+            category    = "salary",
+            description = f"PT Fee — {assignment.trainer.name} for {assignment.member.name}",
+            amount      = payable_amt,
+            date        = timezone.localdate(),
+            vendor      = assignment.trainer.name,
+            notes       = f"Trainer assignment ID: {assignment.id} | PT fee: ₹{pt_amt} × {pt_payable_pct}% = ₹{payable_amt} | Invoice: {assignment.member.payments.order_by('-created_at').values_list('invoice_number', flat=True).first() or ''}",
+        )
+
+        assignment.trainer_fee_paid = True
+        assignment.save()
+
         return Response(TrainerAssignmentSerializer(assignment).data)

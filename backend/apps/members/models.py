@@ -78,10 +78,9 @@ class Member(models.Model):
         if not self.plan:
             return Decimal("0")
         if self.personal_trainer:
-            if self.plan_type == "standard":
-                return self.plan.price + Decimal("500")
-            elif self.plan_type == "premium":
-                return self.plan.price + Decimal("1000")
+            assignment = self.trainer_assignments.select_related("trainer").first()
+            if assignment and assignment.trainer.personal_trainer_amt:
+                return self.plan.price + assignment.trainer.personal_trainer_amt
         return self.plan.price
 
 class MemberPayment(models.Model):
@@ -252,6 +251,7 @@ class TrainerAssignment(models.Model):
     startingtime               = models.TimeField()
     endingtime                 = models.TimeField()
     working_days               = models.CharField(max_length=20, default="0,1,2,3,4,5,6")
+    trainer_fee_paid           = models.BooleanField(default=False)
     class Meta:
         unique_together = ["member", "trainer"]
         ordering = ["-assigned_at"]

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
 import ConfirmModal from "../../components/ConfirmModal";
@@ -14,13 +15,12 @@ function daysToStr(arr) {
 }
 
 /* ─── Assignment Modal ─────────────────────────────── */
-function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onSave }) {
+function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onSave, newMemberId, pendingMember }) {
   const isEdit = !!assignment?.id;
 
   // Only members whose plan allows a personal trainer
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
-  // Only standard/premium plans with personal_trainer flag
-  const trainerPlans = plans.filter(p => ["standard", "premium"].includes(p.plans));
+  const trainerPlans = plans.filter(p => p.is_active !== false);
 
   const [form, setForm] = useState(() => {
     if (isEdit) {
@@ -33,15 +33,34 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         working_days: daysFromStr(assignment.working_days),
       };
     }
+    if (pendingMember) {
+      return {
+        member: "",
+        trainer: "",
+        plan: pendingMember.plan || "",
+        startingtime: "06:00", endingtime: "07:00",
+        working_days: [0, 1, 2, 3, 4, 5, 6],
+      };
+    }
     return {
-      member: "", trainer: "", plan: "",
+      member: newMemberId || "", trainer: "", plan: "",
       startingtime: "06:00", endingtime: "07:00",
       working_days: [0, 1, 2, 3, 4, 5, 6],
     };
   });
 
   const [saving, setSaving] = useState(false);
+  const [ptAmountToCollect, setPtAmountToCollect] = useState("");
+  const [modeOfPayment, setModeOfPayment] = useState("cash");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Auto-populate plan when member is pre-selected from URL
+  useEffect(() => {
+    if (newMemberId && !isEdit) {
+      const found = eligibleMembers.find(m => String(m.id) === String(newMemberId));
+      if (found?.plan) set("plan", found.plan);
+    }
+  }, [newMemberId, eligibleMembers, isEdit]);
 
   // When member changes (create mode), auto-populate plan from their current plan
   const handleMemberChange = (memberId) => {
@@ -50,6 +69,23 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
     const found = eligibleMembers.find(m => String(m.id) === String(memberId));
     if (found?.plan) set("plan", found.plan);
   };
+
+  // Amount breakdown
+  const selectedTrainer   = trainers.find(t => String(t.id) === String(form.trainer));
+  const selectedMemberObj = allMembers.find(m => String(m.id) === String(form.member));
+  const memberPlanId      = pendingMember ? pendingMember.plan : selectedMemberObj?.plan;
+  const memberPlan        = plans.find(p => String(p.id) === String(memberPlanId));
+  const planWithGst       = parseFloat(memberPlan?.price_with_gst ?? memberPlan?.price ?? 0);
+  const ptFee             = parseFloat(selectedTrainer?.personal_trainer_amt ?? 0);
+  const ptFeeGst          = parseFloat((ptFee * 0.18).toFixed(2));
+  const ptFeeWithGst      = ptFee + ptFeeGst;
+  const grandTotal        = planWithGst + ptFeeWithGst;
+
+  // Auto-fill PT amount when trainer is selected (GST-inclusive)
+  useEffect(() => {
+    if (ptFeeWithGst > 0) setPtAmountToCollect(ptFeeWithGst);
+    else setPtAmountToCollect("");
+  }, [form.trainer, ptFeeWithGst]);
 
   const toggleDay = (idx) => {
     set("working_days",
@@ -61,8 +97,12 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.member || !form.trainer) {
-      toast.error("Member and Trainer are required.");
+    if (!pendingMember && !form.member) {
+      toast.error("Member is required.");
+      return;
+    }
+    if (!form.trainer) {
+      toast.error("Trainer is required.");
       return;
     }
     if (form.working_days.length === 0) {
@@ -70,23 +110,95 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
       return;
     }
     setSaving(true);
-    const payload = {
-      member: Number(form.member),
-      trainer: Number(form.trainer),
-      plan: form.plan ? Number(form.plan) : null,
-      startingtime: form.startingtime,
-      endingtime: form.endingtime,
-      working_days: daysToStr(form.working_days),
-    };
     try {
       if (isEdit) {
+        const payload = {
+          member: Number(form.member),
+          trainer: Number(form.trainer),
+          plan: form.plan ? Number(form.plan) : null,
+          startingtime: form.startingtime,
+          endingtime: form.endingtime,
+          working_days: daysToStr(form.working_days),
+        };
         await api.patch(`/members/assign-trainer/${assignment.id}/`, payload);
         toast.success("Assignment updated!");
+        onSave();
+      } else if (pendingMember) {
+        // Step 1: Create the member (deferred from enrollment) — no installment recorded yet
+        const mRes = await api.post("/members/list/", {
+          name: pendingMember.name,
+          phone: pendingMember.phone,
+          email: pendingMember.email || "",
+          gender: pendingMember.gender || "",
+          address: pendingMember.address || "",
+          notes: pendingMember.notes || "",
+          age: pendingMember.age || undefined,
+          plan_id: pendingMember.plan || undefined,
+          diet_id: pendingMember.diet || undefined,
+          foodType: pendingMember.foodType || "veg",
+          plan_type: pendingMember.plan_type,
+          personal_trainer: true,
+          amount_paid: pendingMember.amount_paid || 0,
+          mode_of_payment: pendingMember.mode_of_payment || "cash",
+          renewal_date: pendingMember.renewal_date || undefined,
+          status: pendingMember.status || "active",
+        });
+        const createdMemberId = mRes.data.id;
+
+        // Step 2: Assign trainer — send combined enrollment + PT fee as one transaction
+        const collectAmt = parseFloat(ptAmountToCollect || 0);
+        const enrollAmt  = parseFloat(pendingMember.amount_paid || 0);
+        const combined   = enrollAmt + collectAmt;
+
+        await api.post("/members/assign-trainer/", {
+          member:          createdMemberId,
+          trainer:         Number(form.trainer),
+          plan:            form.plan ? Number(form.plan) : null,
+          startingtime:    form.startingtime,
+          endingtime:      form.endingtime,
+          working_days:    daysToStr(form.working_days),
+          amount_paid:     combined,
+          mode_of_payment: modeOfPayment,
+          notes:           pendingMember.notes || "",
+        });
+
+        toast.success(
+          combined > 0
+            ? `Member enrolled & trainer assigned! ₹${combined.toLocaleString("en-IN")} recorded.`
+            : "Member enrolled & trainer assigned!"
+        );
+
+        sessionStorage.removeItem("pendingMember");
+        onSave();
       } else {
-        await api.post("/members/assign-trainer/", payload);
-        toast.success("Trainer assigned!");
+        // Existing member flow
+        await api.post("/members/assign-trainer/", {
+          member: Number(form.member),
+          trainer: Number(form.trainer),
+          plan: form.plan ? Number(form.plan) : null,
+          startingtime: form.startingtime,
+          endingtime: form.endingtime,
+          working_days: daysToStr(form.working_days),
+        });
+
+        const collectAmt = parseFloat(ptAmountToCollect || 0);
+        if (collectAmt > 0) {
+          try {
+            await api.post(`/members/list/${form.member}/pay-balance/`, {
+              amount_paid: collectAmt,
+              mode_of_payment: modeOfPayment,
+              notes: "PT fee collected at assignment",
+            });
+            toast.success(`Trainer assigned! ₹${collectAmt.toLocaleString("en-IN")} PT fee recorded.`);
+          } catch {
+            toast.success("Trainer assigned!");
+            toast.error("PT fee collection failed — record it manually in Payments.");
+          }
+        } else {
+          toast.success("Trainer assigned!");
+        }
+        onSave();
       }
-      onSave();
     } catch (err) {
       const d = err.response?.data;
       toast.error(
@@ -102,7 +214,17 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
       <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <div className="modal-title">{isEdit ? "Edit Assignment" : "Assign Trainer"}</div>
 
-        {!isEdit && eligibleMembers.length === 0 && (
+        {pendingMember && (
+          <div style={{
+            background: "rgba(168,255,87,.08)", color: "var(--accent)",
+            border: "1px solid rgba(168,255,87,.3)", borderRadius: 8, padding: "10px 14px",
+            marginBottom: 14, fontSize: 13,
+          }}>
+            Completing enrollment for <strong>{pendingMember.name}</strong> — assign a trainer below to add them to the system.
+          </div>
+        )}
+
+        {!pendingMember && !isEdit && eligibleMembers.length === 0 && (
           <div style={{
             background: "var(--badge-yellow-bg, #fef3c7)", color: "#92400e",
             border: "1px solid #fcd34d", borderRadius: 8, padding: "10px 14px",
@@ -119,7 +241,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
           <div className="form-group">
             <label className="form-label">
               Member *
-              {!isEdit && (
+              {!isEdit && !pendingMember && (
                 <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
                   (Standard / Premium plans only)
                 </span>
@@ -127,6 +249,18 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             </label>
             {isEdit ? (
               <input className="form-input" value={assignment.member_name} disabled />
+            ) : pendingMember ? (
+              <div style={{
+                background: "var(--card-bg)", border: "1px solid var(--border)",
+                borderRadius: 8, padding: "10px 14px", fontSize: 13,
+              }}>
+                <div style={{ fontWeight: 600, color: "var(--text1)" }}>{pendingMember.name}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
+                  {pendingMember.phone}
+                  {memberPlan ? ` · ${memberPlan.name}` : ""}
+                  {" · "}<span style={{ textTransform: "capitalize" }}>{pendingMember.plan_type}</span>
+                </div>
+              </div>
             ) : (
               <select className="form-input" value={form.member} onChange={e => handleMemberChange(e.target.value)} required>
                 <option value="">— Select eligible member —</option>
@@ -168,7 +302,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             <select className="form-input" value={form.plan} onChange={e => set("plan", e.target.value)}>
               <option value="">— No specific plan —</option>
               {trainerPlans.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.plans})</option>
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
@@ -209,10 +343,94 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             </div>
           </div>
 
+          {/* Amount breakdown — shown when trainer is selected */}
+          {form.trainer && planWithGst > 0 && (
+            <div style={{
+              background: "var(--card-bg)", border: "1px solid var(--border)",
+              borderRadius: 8, padding: "12px 14px", fontSize: 13,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>
+                Amount Breakdown
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                <span>Plan (incl. GST)</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{planWithGst.toLocaleString("en-IN")}</span>
+              </div>
+              {ptFee > 0 && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                    <span>Personal Trainer Fee (base)</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFee.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                    <span>GST on PT Fee (18%)</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFeeGst.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                    <span>Personal Trainer Fee (incl. GST)</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFeeWithGst.toLocaleString("en-IN")}</span>
+                  </div>
+                </>
+              )}
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                fontWeight: 700, color: "var(--accent)",
+                borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 4,
+              }}>
+                <span>Total</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{grandTotal.toLocaleString("en-IN")}</span>
+              </div>
+              {ptFee === 0 && (
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 6 }}>
+                  This trainer has no PT fee set. Add one in Staff settings.
+                </div>
+              )}
+
+              {/* Collect PT fee immediately */}
+              {!isEdit && ptFeeWithGst > 0 && (
+                <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>
+                    Collect PT Fee Now
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>
+                        Amount (₹)
+                      </label>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min="0"
+                        max={ptFeeWithGst}
+                        value={ptAmountToCollect}
+                        onChange={e => setPtAmountToCollect(e.target.value)}
+                        placeholder="0 to collect later"
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>
+                        Mode
+                      </label>
+                      <select className="form-input" value={modeOfPayment} onChange={e => setModeOfPayment(e.target.value)}>
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="upi">UPI</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                    Leave 0 to collect later via Payments.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : isEdit ? "Update" : "Assign Trainer"}
+              {saving ? "Saving…" : isEdit ? "Update" : pendingMember ? "Enroll & Assign Trainer" : "Assign Trainer"}
             </button>
           </div>
         </form>
@@ -223,6 +441,13 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
 /* ─── Main Page ────────────────────────────────────── */
 export default function TrainerAssignments() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const urlParams   = new URLSearchParams(location.search);
+  const newMemberId = urlParams.get("newMember");
+  const fromPage    = urlParams.get("from");
+  const isPending   = urlParams.get("pending") === "1";
+
   const [assignments, setAssignments] = useState([]);
   const [allMembers, setAllMembers] = useState([]);
   const [trainers, setTrainers] = useState([]);
@@ -232,6 +457,7 @@ export default function TrainerAssignments() {
   const [filterMember, setFilterMember] = useState("");
   const [filterTrainer, setFilterTrainer] = useState("");
   const [confirmState, setConfirmState] = useState(null);
+  const [pendingMember, setPendingMember] = useState(null);
 
   // Eligible members for the filter dropdown (all plans including non-eligible for admin visibility)
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
@@ -267,6 +493,48 @@ export default function TrainerAssignments() {
     }).catch(() => toast.error("Failed to load reference data."));
   }, []);
 
+  // Auto-open modal when redirected from enrollment
+  useEffect(() => {
+    if (newMemberId && allMembers.length > 0) {
+      setModal("new");
+    }
+  }, [newMemberId, allMembers]);
+
+  // Load pending member from sessionStorage when redirected with pending=1
+  useEffect(() => {
+    if (isPending) {
+      const stored = sessionStorage.getItem("pendingMember");
+      if (stored) {
+        try {
+          setPendingMember(JSON.parse(stored));
+          setModal("new");
+        } catch {
+          sessionStorage.removeItem("pendingMember");
+        }
+      }
+    }
+  }, [isPending]);
+
+  const handlePayTrainerFee = (assignment) => {
+    setConfirmState({
+      title: "Pay Trainer Fee",
+      message: `Pay ₹${(assignment.trainer_pt_amt || 0).toLocaleString("en-IN")} to ${assignment.trainer_name} for ${assignment.member_name}? This will be recorded as an expense.`,
+      confirmText: "Pay",
+      danger: false,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.post(`/members/assign-trainer/${assignment.id}/pay-trainer-fee/`);
+          toast.success(`₹${(assignment.trainer_pt_amt || 0).toLocaleString("en-IN")} paid to ${assignment.trainer_name}.`);
+          load();
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Payment failed.");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
+  };
+
   const handleDelete = (id) => {
     setConfirmState({
       title: "Delete Assignment",
@@ -292,6 +560,12 @@ export default function TrainerAssignments() {
       {confirmState && <ConfirmModal {...confirmState} />}
       <div className="page-header">
         <div>
+          {fromPage && (
+            <button className="btn btn-ghost" style={{ marginBottom: 6, fontSize: 13 }}
+              onClick={() => navigate(`/${fromPage}`)}>
+              ← Back
+            </button>
+          )}
           <h1 className="page-title">Trainer Assignments</h1>
           <p className="page-sub">Personal trainer scheduling for Standard &amp; Premium members</p>
         </div>
@@ -369,11 +643,17 @@ export default function TrainerAssignments() {
                 <th>Trainer</th>
                 <th>Time Slot</th>
                 <th>Days</th>
+                <th>Member PT Status</th>
+                <th>Trainer Fee</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {assignments.map(a => (
+              {assignments.map(a => {
+                const ptAmt           = a.trainer_pt_amt || 0;
+                const memberPaid      = a.member_amount_paid || 0;
+                const memberCoveredPT = ptAmt > 0 && memberPaid >= ptAmt;
+                return (
                 <tr key={a.id}>
                   <td>
                     <div>
@@ -407,6 +687,43 @@ export default function TrainerAssignments() {
                       ))}
                     </div>
                   </td>
+
+                  {/* Member PT payment status */}
+                  <td>
+                    {ptAmt > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span className={`badge ${memberCoveredPT ? "badge-green" : "badge-yellow"}`} style={{ fontSize: 11 }}>
+                          {memberCoveredPT ? "PT Fee Covered" : "PT Fee Pending"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          ₹{memberPaid.toLocaleString("en-IN")} / ₹{ptAmt.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                    )}
+                  </td>
+
+                  {/* Pay trainer fee */}
+                  <td>
+                    {ptAmt > 0 ? (
+                      a.trainer_fee_paid ? (
+                        <span className="badge badge-green" style={{ fontSize: 11 }}>Paid to Trainer</span>
+                      ) : (
+                        <button
+                          className="btn btn-sm btn-primary"
+                          disabled={!memberCoveredPT}
+                          title={!memberCoveredPT ? "Member hasn't paid PT fee yet" : `Pay ₹${ptAmt.toLocaleString("en-IN")} to ${a.trainer_name}`}
+                          onClick={() => handlePayTrainerFee(a)}
+                        >
+                          Pay ₹{ptAmt.toLocaleString("en-IN")}
+                        </button>
+                      )
+                    ) : (
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                    )}
+                  </td>
+
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => setModal(a)}>Edit</button>
@@ -414,7 +731,8 @@ export default function TrainerAssignments() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -426,8 +744,18 @@ export default function TrainerAssignments() {
           allMembers={allMembers}
           trainers={trainers}
           plans={plans}
-          onClose={() => setModal(null)}
-          onSave={() => { setModal(null); load(); }}
+          newMemberId={modal === "new" ? newMemberId : null}
+          pendingMember={modal === "new" ? pendingMember : null}
+          onClose={() => {
+            setModal(null);
+            // If user cancels a pending enrollment, keep sessionStorage so they can retry
+          }}
+          onSave={() => {
+            setModal(null);
+            setPendingMember(null);
+            load();
+            if (fromPage) navigate(`/${fromPage}`);
+          }}
         />
       )}
     </div>

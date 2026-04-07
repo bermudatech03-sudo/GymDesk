@@ -6,5 +6,7 @@ class NotificationsConfig(AppConfig):
 
     def ready(self):
         import apps.notifications.signals  # noqa: F401  — registers the signal
-        from apps.notifications.scheduler import start
-        start()
+        import sys
+        if "runserver" in sys.argv or "gunicorn" in sys.argv[0]:
+            from apps.notifications.scheduler import start
+            start()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
-import "./Plans.css";
+import "./plans.css";
 import ConfirmModal from "../../components/ConfirmModal";
 
 function PlanModal({ plan, onClose, onSave }) {
@@ -116,161 +116,161 @@ function PlanModal({ plan, onClose, onSave }) {
   );
 }
 
-  export default function Plans() {
-    const [plans, setPlans] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [modal, setModal] = useState(false);
-    const [selected, setSelected] = useState(null);
-    const [confirmState, setConfirmState] = useState(null);
+export default function Plans() {
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
 
-    useEffect(() => {
-      document.getElementById("page-title").textContent = "Membership Plans";
-    }, []);
+  useEffect(() => {
+    document.getElementById("page-title").textContent = "Membership Plans";
+  }, []);
 
-    const load = useCallback(async () => {
-      setLoading(true);
-      try {
-        const res = await api.get("/members/plans/");
-        setPlans(res.data.results || res.data);
-      } finally {
-        setLoading(false);
-      }
-    }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/members/plans/");
+      setPlans(res.data.results || res.data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-    const deletePlan = (plan) => {
-      setConfirmState({
-        title: "Delete Plan",
-        message: `Delete "${plan.name}"? Members using this plan will lose their plan reference.`,
-        confirmText: "Delete",
-        danger: true,
-        onConfirm: async () => {
-          setConfirmState(null);
-          try {
-            await api.delete(`/members/plans/${plan.id}/`);
-            toast.success("Plan deleted");
-            load();
-          } catch {
-            toast.error("Cannot delete — members may be linked to this plan");
-          }
-        },
-        onCancel: () => setConfirmState(null),
-      });
-    };
+  const deletePlan = (plan) => {
+    setConfirmState({
+      title: "Delete Plan",
+      message: `Delete "${plan.name}"? Members using this plan will lose their plan reference.`,
+      confirmText: "Delete",
+      danger: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.delete(`/members/plans/${plan.id}/`);
+          toast.success("Plan deleted");
+          load();
+        } catch {
+          toast.error("Cannot delete — members may be linked to this plan");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
+  };
 
-    const toggleActive = async (plan) => {
-      await api.patch(`/members/plans/${plan.id}/`, { is_active: !plan.is_active });
-      toast.success(plan.is_active ? "Plan deactivated — hidden from enrollment" : "Plan activated");
-      load();
-    };
+  const toggleActive = async (plan) => {
+    await api.patch(`/members/plans/${plan.id}/`, { is_active: !plan.is_active });
+    toast.success(plan.is_active ? "Plan deactivated — hidden from enrollment" : "Plan activated");
+    load();
+  };
 
-    const openAdd = () => { setSelected(null); setModal(true); };
-    const openEdit = (p) => { setSelected(p); setModal(true); };
-    const closeModal = () => { setModal(false); setSelected(null); };
-    const afterSave = () => { closeModal(); load(); };
+  const openAdd = () => { setSelected(null); setModal(true); };
+  const openEdit = (p) => { setSelected(p); setModal(true); };
+  const closeModal = () => { setModal(false); setSelected(null); };
+  const afterSave = () => { closeModal(); load(); };
 
-    return (
-      <div>
-        {confirmState && <ConfirmModal {...confirmState} />}
-        <div className="page-header">
-          <div>
-            <div className="page-title">Membership Plans</div>
-            <div className="page-subtitle">
-              Plans you create here will appear in the enrollment dropdown when adding members
-            </div>
+  return (
+    <div>
+      {confirmState && <ConfirmModal {...confirmState} />}
+      <div className="page-header">
+        <div>
+          <div className="page-title">Membership Plans</div>
+          <div className="page-subtitle">
+            Plans you create here will appear in the enrollment dropdown when adding members
           </div>
-          <button className="btn btn-primary" onClick={openAdd}>
-            + Add New Plan
+        </div>
+        <button className="btn btn-primary" onClick={openAdd}>
+          + Add New Plan
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: "var(--text3)", fontSize: 14 }}>
+          Loading plans…
+        </div>
+      ) : plans.length === 0 ? (
+        <div className="plans-empty">
+          <div className="plans-empty__icon">◉</div>
+          <div className="plans-empty__title">No plans yet</div>
+          <div className="plans-empty__sub">
+            Create your first membership plan. Once added, plans appear in the
+            member enrollment form automatically.
+          </div>
+          <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={openAdd}>
+            + Create First Plan
           </button>
         </div>
-
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--text3)", fontSize: 14 }}>
-            Loading plans…
-          </div>
-        ) : plans.length === 0 ? (
-          <div className="plans-empty">
-            <div className="plans-empty__icon">◉</div>
-            <div className="plans-empty__title">No plans yet</div>
-            <div className="plans-empty__sub">
-              Create your first membership plan. Once added, plans appear in the
-              member enrollment form automatically.
-            </div>
-            <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={openAdd}>
-              + Create First Plan
-            </button>
-          </div>
-        ) : (
-          <div className="plans-grid">
-            {plans.map(p => (
-              <div
-                key={p.id}
-                className={`plan-card ${!p.is_active ? "plan-card--inactive" : ""}`}
-              >
-                {/* Top row: status badge + actions */}
-                <div className="plan-card__header">
-                  <span className={`badge ${p.is_active ? "badge-green" : "badge-gray"}`}>
-                    {p.is_active ? "Active" : "Inactive"}
-                  </span>
-                  <div className="plan-card__actions">
-                    <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)}>
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      style={{
-                        background: p.is_active
-                          ? "rgba(255,184,48,.12)"
-                          : "rgba(168,255,87,.12)",
-                        color: p.is_active ? "var(--warn)" : "var(--accent)",
-                      }}
-                      onClick={() => toggleActive(p)}
-                    >
-                      {p.is_active ? "Deactivate" : "Activate"}
-                    </button>
-                    <button className="btn btn-sm btn-danger" onClick={() => deletePlan(p)}>
-                      Delete
-                    </button>
-                  </div>
+      ) : (
+        <div className="plans-grid">
+          {plans.map(p => (
+            <div
+              key={p.id}
+              className={`plan-card ${!p.is_active ? "plan-card--inactive" : ""}`}
+            >
+              {/* Top row: status badge + actions */}
+              <div className="plan-card__header">
+                <span className={`badge ${p.is_active ? "badge-green" : "badge-gray"}`}>
+                  {p.is_active ? "Active" : "Inactive"}
+                </span>
+                <div className="plan-card__actions">
+                  <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)}>
+                    Edit
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    style={{
+                      background: p.is_active
+                        ? "rgba(255,184,48,.12)"
+                        : "rgba(168,255,87,.12)",
+                      color: p.is_active ? "var(--warn)" : "var(--accent)",
+                    }}
+                    onClick={() => toggleActive(p)}
+                  >
+                    {p.is_active ? "Deactivate" : "Activate"}
+                  </button>
+                  <button className="btn btn-sm btn-danger" onClick={() => deletePlan(p)}>
+                    Delete
+                  </button>
                 </div>
-
-                <div className="plan-card__name">{p.name}</div>
-
-                <div className="plan-card__price">
-                  ₹{Number(p.price).toLocaleString("en-IN")}
-                  <span className="plan-card__price-label">/ plan</span>
-                </div>
-
-                <div className="plan-card__duration">
-                  <span style={{ color: "var(--accent)" }}>◷</span>
-                  {p.duration_days} days
-                  <span className="plan-card__duration-note">
-                    &nbsp;(
-                    {p.duration_days >= 365
-                      ? `${Math.round(p.duration_days / 365)} year`
-                      : p.duration_days >= 30
-                        ? `~${Math.round(p.duration_days / 30)} month${Math.round(p.duration_days / 30) > 1 ? "s" : ""}`
-                        : `${p.duration_days} day${p.duration_days > 1 ? "s" : ""}`}
-                    )
-                  </span>
-                </div>
-
-                <div className="plan-card__per-day">
-                  ₹{(p.price / p.duration_days).toFixed(0)} per day
-                </div>
-
-                {p.description && (
-                  <div className="plan-card__desc">{p.description}</div>
-                )}
               </div>
-            ))}
-          </div>
-        )}
 
-        {modal && (
-          <PlanModal plan={selected} onClose={closeModal} onSave={afterSave} />
-        )}
-      </div>
-    );
-  }
+              <div className="plan-card__name">{p.name}</div>
+
+              <div className="plan-card__price">
+                ₹{Number(p.price).toLocaleString("en-IN")}
+                <span className="plan-card__price-label">/ plan</span>
+              </div>
+
+              <div className="plan-card__duration">
+                <span style={{ color: "var(--accent)" }}>◷</span>
+                {p.duration_days} days
+                <span className="plan-card__duration-note">
+                  &nbsp;(
+                  {p.duration_days >= 365
+                    ? `${Math.round(p.duration_days / 365)} year`
+                    : p.duration_days >= 30
+                      ? `~${Math.round(p.duration_days / 30)} month${Math.round(p.duration_days / 30) > 1 ? "s" : ""}`
+                      : `${p.duration_days} day${p.duration_days > 1 ? "s" : ""}`}
+                  )
+                </span>
+              </div>
+
+              <div className="plan-card__per-day">
+                ₹{(p.price / p.duration_days).toFixed(0)} per day
+              </div>
+
+              {p.description && (
+                <div className="plan-card__desc">{p.description}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal && (
+        <PlanModal plan={selected} onClose={closeModal} onSave={afterSave} />
+      )}
+    </div>
+  );
+}

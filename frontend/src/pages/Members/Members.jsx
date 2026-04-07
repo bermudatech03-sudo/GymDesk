@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
 import "./Members.css";
@@ -67,6 +68,33 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
         toast.success("Member updated!");
         onSave(null);
       } else {
+        // Standard / Premium → hold enrollment until trainer is assigned
+        if (form.plan_type === "standard" || form.plan_type === "premium") {
+          sessionStorage.setItem("pendingMember", JSON.stringify({
+            name: form.name,
+            phone: form.phone,
+            email: form.email || "",
+            gender: form.gender || "",
+            address: form.address || "",
+            notes: form.notes || "",
+            age: form.age || undefined,
+            plan: form.plan || undefined,
+            plan_id: form.plan || undefined,
+            diet: form.diet || undefined,
+            diet_id: form.diet || undefined,
+            foodType: form.foodType || "veg",
+            plan_type: form.plan_type,
+            personal_trainer: true,
+            amount_paid: form.amount_paid || 0,
+            mode_of_payment: form.mode_of_payment || "cash",
+            renewal_date: form.renewal_date || undefined,
+            status: form.status || "active",
+          }));
+          toast.success("Details saved — assign a trainer to complete enrollment.");
+          onSave({ isPending: true, planType: form.plan_type });
+          return;
+        }
+
         const res = await api.post("/members/list/", {
           ...form,
           plan_id: form.plan || undefined,
@@ -75,14 +103,11 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
         });
         toast.success("Member enrolled!");
         let billData = res.data.bill ?? null;
-        console.log("Initial  data:", res.data);
         if (billData && res.data.id) {
           try {
             const hRes = await api.get("/members/payments/", { params: { member: res.data.id } });
-            console.log("member:", res.data.id, "payments response:", hRes.data);
             const raw = hRes.data;
             const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
-            console.log("Parsed payments list:", list);
             list.sort((a, b) => new Date(a.paid_date) - new Date(b.paid_date));
             const listWithInsts = list.map(p => ({
               ...p,
@@ -91,7 +116,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
             billData = { ...billData, installments: listWithInsts };
           } catch (_) { /* non-fatal */ }
         }
-        onSave(billData);
+        onSave({ bill: billData, newMemberId: res.data.id, planType: form.plan_type });
       }
     } catch (err) {
       const d = err.response?.data;
@@ -757,6 +782,7 @@ function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCa
 
 /* ─── Main page ────────────────────────────────────── */
 export default function Members() {
+  const navigate = useNavigate();
   const [members, setMembers] = useState([]);
   const [plans, setPlans] = useState([]);
   const [dietPlans, setDietPlans] = useState([]);
@@ -815,9 +841,29 @@ export default function Members() {
   const hasActiveFilters = filter !== "all" || planFilter || balanceFilter || expiringDays || search;
 
   const closeModal = () => { setModal(null); setSelected(null); };
-  const afterSave = (billData) => {
+  const afterSave = (data) => {
+    const isNewEnroll = data && typeof data === "object" && "newMemberId" in data;
+    const isPending   = data && typeof data === "object" && data.isPending === true;
+
     closeModal();
+
+    // Standard/Premium pending: navigate to trainer assignment without refreshing
+    if (isPending) {
+      navigate(`/trainer-assignments?pending=1&from=members`);
+      return;
+    }
+
     load();
+
+    const billData    = isNewEnroll ? data.bill : data;
+    const newMemberId = isNewEnroll ? data.newMemberId : null;
+    const planType    = isNewEnroll ? data.planType : null;
+
+    if (newMemberId && (planType === "standard" || planType === "premium")) {
+      navigate(`/trainer-assignments?newMember=${newMemberId}&from=members`);
+      return;
+    }
+
     if (billData) {
       setBill(billData);
       setGymInfo({

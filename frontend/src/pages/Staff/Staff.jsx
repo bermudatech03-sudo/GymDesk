@@ -703,6 +703,7 @@ function StaffModal({ staff, onClose, onSave }) {
     email: staff?.email || "",
     role: staff?.role || "trainer",
     salary: staff?.salary || "",
+    personal_trainer_amt: staff?.personal_trainer_amt || "",
     status: staff?.status || "active",
     notes: staff?.notes || "",
     shift_template: staff?.shift_template || "",
@@ -786,6 +787,14 @@ function StaffModal({ staff, onClose, onSave }) {
               <input className="form-input" type="number" value={form.salary}
                 onChange={e => set("salary", e.target.value)} />
             </div>
+            {form.role === "trainer" && (
+              <div className="form-group">
+                <label className="form-label">Personal Trainer Fee (₹)</label>
+                <input className="form-input" type="number" value={form.personal_trainer_amt}
+                  onChange={e => set("personal_trainer_amt", e.target.value)}
+                  placeholder="Fee charged when assigned as personal trainer" />
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Status</label>
               <select className="form-input" value={form.status}
@@ -1385,6 +1394,11 @@ export default function Staff() {
                     <td style={{ color: "var(--text3)" }}>{s.phone}</td>
                     <td style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)" }}>
                       ₹{Number(s.salary).toLocaleString("en-IN")}
+                      {s.role === "trainer" && s.personal_trainer_amt && (
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 2 }}>
+                          PT: ₹{Number(s.personal_trainer_amt).toLocaleString("en-IN")}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span className={`badge ${s.status === "active" ? "badge-green" :

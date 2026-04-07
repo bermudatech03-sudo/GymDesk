@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import XLSXStyle from "xlsx-js-style";
 import api from "../api/axios";
-import "./MonthlyReport.css";
+import "./Monthlyreport.css";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

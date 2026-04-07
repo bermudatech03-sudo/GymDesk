@@ -8,6 +8,8 @@ from apps.staff.models import StaffMember, StaffAttendance
 from apps.members.models import Member, MemberAttendance
 from rest_framework import generics, status, permissions
 from django.views.decorators.csrf import csrf_exempt
+from datetime import datetime
+from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
 class LoginView(TokenObtainPairView):
@@ -35,7 +37,7 @@ class UserListView(generics.ListCreateAPIView):
     serializer_class = UserSerializer
     def get_permissions(self):
         return [permissions.IsAdminUser()]
-    
+
 @csrf_exempt
 def iclock_data(request):
     if request.method == "GET":
@@ -139,3 +141,7 @@ def iclock_data(request):
         return HttpResponse("OK")
 
     return HttpResponse("FAILED")
+
+@csrf_exempt
+def iclock_getrequest(request):
+    return HttpResponse("OK")

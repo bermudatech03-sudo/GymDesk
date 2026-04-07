@@ -7,10 +7,10 @@ from django.utils import timezone
 from django.db.models import Sum, Q
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
-from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment
+from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment, PTRenewal
 from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, PlanSerializer, MemberPaymentSerializer,
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
-    InstallmentPaymentSerializer, TrainerAssignmentSerializer)
+    InstallmentPaymentSerializer, TrainerAssignmentSerializer, PTRenewalSerializer)
 from apps.notifications.utils import send_notification
 
 
@@ -675,13 +675,23 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         if data.get("plan"):
             plan = MembershipPlan.objects.filter(pk=data["plan"]).first()
 
+        # Set initial PT period (30 days from today, capped at plan end)
+        today = timezone.localdate()
+        pt_start = today
+        if member.renewal_date and member.renewal_date > today:
+            pt_end = min(today + timedelta(days=30), member.renewal_date)
+        else:
+            pt_end = today + timedelta(days=30)
+
         assignment = TrainerAssignment(
-            member       = member,
-            trainer      = trainer,
-            plan         = plan,
-            startingtime = data.get("startingtime"),
-            endingtime   = data.get("endingtime"),
-            working_days = data.get("working_days", "0,1,2,3,4,5,6"),
+            member        = member,
+            trainer       = trainer,
+            plan          = plan,
+            startingtime  = data.get("startingtime"),
+            endingtime    = data.get("endingtime"),
+            working_days  = data.get("working_days", "0,1,2,3,4,5,6"),
+            pt_start_date = pt_start,
+            pt_end_date   = pt_end,
         )
         try:
             assignment.full_clean()
@@ -736,6 +746,12 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         if data.get("working_days"):
             assignment.working_days = data["working_days"]
 
+        # Allow admin to manually adjust PT period dates (for corrections / testing)
+        if data.get("pt_start_date"):
+            assignment.pt_start_date = data["pt_start_date"]
+        if data.get("pt_end_date"):
+            assignment.pt_end_date = data["pt_end_date"]
+
         try:
             assignment.full_clean()
         except DjValidationError as exc:
@@ -773,3 +789,251 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         assignment.save()
 
         return Response(TrainerAssignmentSerializer(assignment).data)
+
+    @action(detail=True, methods=["post"], url_path="pay-pt-trainer-fee")
+    def pay_pt_trainer_fee(self, request, pk=None):
+        """
+        Pays the trainer's share from all unpaid PT renewal periods in one go.
+
+        If multiple PT renewals have accumulated without a trainer payout,
+        this action sums them all and records a single Expenditure entry.
+        The PT_PAYABLE_PERCENT setting determines the trainer's share of each
+        renewal's base_amount — this is already stored on each PTRenewal record
+        as trainer_payable_amount when the renewal was created.
+        """
+        from apps.finances.models import Expenditure
+        assignment = self.get_object()
+
+        unpaid_renewals = list(assignment.pt_renewals.filter(trainer_paid=False))
+        if not unpaid_renewals:
+            return Response({"detail": "No pending PT renewal trainer payments."}, status=400)
+
+        total_payable = sum(r.trainer_payable_amount for r in unpaid_renewals)
+        if total_payable <= 0:
+            return Response({"detail": "No trainer amount to pay."}, status=400)
+
+        today     = timezone.localdate()
+        trainer   = assignment.trainer
+        member    = assignment.member
+        inv_refs  = ", ".join(r.invoice_number for r in unpaid_renewals if r.invoice_number)
+        periods   = ", ".join(f"{r.pt_start_date}→{r.pt_end_date}" for r in unpaid_renewals)
+
+        Expenditure.objects.create(
+            category    = "salary",
+            description = f"PT Renewal Fee — {trainer.name} for {member.name}",
+            amount      = total_payable,
+            date        = today,
+            vendor      = trainer.name,
+            notes       = (
+                f"PT renewal trainer payout | {len(unpaid_renewals)} period(s): {periods} "
+                f"| Invoices: {inv_refs} "
+                f"| Assignment ID: {assignment.id}"
+            ),
+        )
+
+        # Mark all unpaid renewals as trainer_paid
+        for r in unpaid_renewals:
+            r.trainer_paid = True
+            r.save()
+
+        return Response(TrainerAssignmentSerializer(assignment).data)
+
+    @action(detail=True, methods=["get"], url_path="pt-renewal-preview")
+    def pt_renewal_preview(self, request, pk=None):
+        """
+        Returns a preview of what a PT renewal would cost, without committing anything.
+        Useful for showing the modal with correct amounts before the admin confirms.
+        """
+        assignment = self.get_object()
+        member     = assignment.member
+        trainer    = assignment.trainer
+        today      = timezone.localdate()
+
+        if member.status != "active":
+            return Response({"can_renew": False, "reason": "Member plan is not active."})
+        if not member.renewal_date or member.renewal_date <= today:
+            return Response({"can_renew": False, "reason": "Member plan has expired. Renew the membership first."})
+
+        plan_days_remaining = (member.renewal_date - today).days
+        pt_days = min(30, plan_days_remaining)
+
+        full_amt = Decimal(str(trainer.personal_trainer_amt or 0))
+        if full_amt <= 0:
+            return Response({"can_renew": False, "reason": "Trainer has no PT fee configured."})
+
+        base = (full_amt / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        base_calc, gst_amt, total, rate = _calc_gst(base)
+
+        return Response({
+            "can_renew":            True,
+            "pt_days":              pt_days,
+            "plan_days_remaining":  plan_days_remaining,
+            "pt_start_date":        str(today),
+            "pt_end_date":          str(today + timedelta(days=pt_days)),
+            "base_amount":          float(base_calc),
+            "gst_rate":             float(rate),
+            "gst_amount":           float(gst_amt),
+            "total_amount":         float(total),
+            "member_name":          member.name,
+            "member_id":            member.display_id(),
+            "member_phone":         member.phone,
+            "plan_name":            member.plan.name if member.plan else "",
+            "plan_valid_to":        str(member.renewal_date),
+            "trainer_name":         trainer.name,
+        })
+
+    @action(detail=True, methods=["post"], url_path="renew-pt")
+    def renew_pt(self, request, pk=None):
+        """
+        Renews the PT period for this trainer assignment.
+
+        Business rules:
+        - Member plan must be active and not expired.
+        - PT duration = min(30, days remaining in member plan from today).
+        - PT amount is prorated: (trainer_pt_amt / 30) × pt_days + GST.
+        - Creates a PTRenewal record and an Income entry.
+        - Updates TrainerAssignment.pt_start_date / pt_end_date.
+        - Returns bill data for download.
+        """
+        from apps.finances.models import Income
+        assignment = self.get_object()
+        member     = assignment.member
+        trainer    = assignment.trainer
+        today      = timezone.localdate()
+
+        # ── Validation ───────────────────────────────────────────────────────
+        if member.status != "active":
+            return Response({"detail": "Member plan is not active. Renew membership first."}, status=400)
+
+        if not member.renewal_date or member.renewal_date <= today:
+            return Response({"detail": "Member plan has expired. Renew the membership plan first."}, status=400)
+
+        plan_days_remaining = (member.renewal_date - today).days
+        pt_days = min(30, plan_days_remaining)
+
+        if pt_days <= 0:
+            return Response({"detail": "No days remaining in the membership plan."}, status=400)
+
+        full_amt = Decimal(str(trainer.personal_trainer_amt or 0))
+        if full_amt <= 0:
+            return Response({"detail": "Trainer has no PT fee configured."}, status=400)
+
+        # ── Amount calculation ────────────────────────────────────────────────
+        base_for_days = (full_amt / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        base, gst_amt, total, rate = _calc_gst(base_for_days)
+
+        amount_paid     = Decimal(str(request.data.get("amount_paid", 0)))
+        mode_of_payment = request.data.get("mode_of_payment", "cash")
+        notes           = request.data.get("notes", "")
+        pt_start        = today
+        pt_end          = today + timedelta(days=pt_days)
+
+        # ── Invoice number ────────────────────────────────────────────────────
+        renewal_seq = assignment.pt_renewals.count() + 1
+        inv_no = f"PT-{today.year}{today.month:02d}-M{member.id:04d}-{renewal_seq:02d}"
+
+        # ── Determine status ──────────────────────────────────────────────────
+        if amount_paid >= total:
+            renewal_status = "paid"
+        elif amount_paid > 0:
+            renewal_status = "partial"
+        else:
+            renewal_status = "pending"
+
+        # ── Trainer payable for this renewal ──────────────────────────────────
+        from apps.finances.gst_utils import get_pt_payable_percent
+        pt_payable_pct         = get_pt_payable_percent()
+        trainer_payable_amount = (base * pt_payable_pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+        # ── Create PTRenewal record ───────────────────────────────────────────
+        renewal = PTRenewal.objects.create(
+            assignment             = assignment,
+            member                 = member,
+            trainer                = trainer,
+            pt_start_date          = pt_start,
+            pt_end_date            = pt_end,
+            pt_days                = pt_days,
+            base_amount            = base,
+            gst_rate               = rate,
+            gst_amount             = gst_amt,
+            total_amount           = total,
+            amount_paid            = amount_paid,
+            mode_of_payment        = mode_of_payment,
+            invoice_number         = inv_no,
+            status                 = renewal_status,
+            paid_date              = today,
+            notes                  = notes,
+            trainer_payable_amount = trainer_payable_amount,
+            trainer_paid           = False,
+        )
+
+        # ── Update assignment PT dates ────────────────────────────────────────
+        assignment.pt_start_date = pt_start
+        assignment.pt_end_date   = pt_end
+        assignment.save()
+
+        # ── Record Income entry ───────────────────────────────────────────────
+        if amount_paid > 0:
+            # GST-first allocation for this payment
+            gst_remaining = gst_amt
+            gst_now = min(amount_paid, gst_remaining).quantize(Decimal("0.01"), ROUND_HALF_UP)
+            base_now = (amount_paid - gst_now).quantize(Decimal("0.01"), ROUND_HALF_UP)
+            effective_rate = Decimal(str(rate)) if gst_now > 0 else Decimal("0")
+
+            Income.objects.create(
+                source         = f"PT Renewal — {member.name}",
+                category       = "personal_training",
+                base_amount    = base_now,
+                gst_rate       = effective_rate,
+                gst_amount     = gst_now,
+                amount         = amount_paid,
+                date           = today,
+                member_id      = member.id,
+                invoice_number = inv_no,
+                notes          = (
+                    f"PT Renewal | {pt_start} → {pt_end} | {pt_days} days "
+                    f"| plan_total:{total} "
+                    f"| mode:{mode_of_payment} "
+                    f"| Trainer: {trainer.name}"
+                ),
+            )
+
+        # ── Build bill data ───────────────────────────────────────────────────
+        gym      = _gym_info()
+        bill_data = {
+            "invoice_number":  inv_no,
+            "bill_type":       "PT Renewal",
+            "member_id":       member.display_id(),
+            "member_name":     member.name,
+            "phone":           member.phone,
+            "email":           member.email,
+            "trainer_name":    trainer.name,
+            "trainer_id":      f"S{trainer.id:04d}",
+            "plan_name":       member.plan.name if member.plan else "",
+            "plan_valid_to":   str(member.renewal_date),
+            "pt_start_date":   str(pt_start),
+            "pt_end_date":     str(pt_end),
+            "pt_days":         pt_days,
+            "full_pt_days":    30,
+            "base_amount":     float(base),
+            "gst_rate":        float(rate),
+            "gst_amount":      float(gst_amt),
+            "total_amount":    float(total),
+            "amount_paid":     float(amount_paid),
+            "balance":         float(max(total - amount_paid, Decimal("0"))),
+            "status":          renewal_status,
+            "mode_of_payment": mode_of_payment,
+            "date":            str(today),
+            "gym_name":        gym["name"],
+            "gym_address":     gym["address"],
+            "gym_phone":       gym["phone"],
+            "gym_email":       gym["email"],
+            "gym_gstin":       gym["gstin"],
+            "notes":           notes,
+        }
+
+        return Response({
+            **TrainerAssignmentSerializer(assignment).data,
+            "renewal":  PTRenewalSerializer(renewal).data,
+            "bill":     bill_data,
+        }, status=201)

@@ -13,14 +13,342 @@ function daysFromStr(str) {
 function daysToStr(arr) {
   return arr.slice().sort((a, b) => a - b).join(",");
 }
+const fmt = n => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtD = n => Number(n || 0).toLocaleString("en-IN");
 
-/* ─── Assignment Modal ─────────────────────────────── */
+/* ─── PT Bill HTML builder ─────────────────────────────────────────────────── */
+const PT_BILL_CSS = `
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f4f4;padding:32px 16px;color:#111}
+  .page{max-width:660px;margin:0 auto;background:#fff;border-radius:12px;
+        box-shadow:0 4px 24px rgba(0,0,0,.12);overflow:hidden}
+  .header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;padding:24px 32px;text-align:center}
+  .gym-name{font-size:20px;font-weight:800;letter-spacing:1px;margin-bottom:4px}
+  .gym-sub{font-size:11px;color:rgba(255,255,255,.65);line-height:1.7}
+  .gym-gstin{display:inline-block;margin-top:6px;background:rgba(168,255,87,.15);
+    color:#a8ff57;border:1px solid rgba(168,255,87,.3);border-radius:100px;
+    padding:2px 12px;font-size:11px;font-weight:700;letter-spacing:1px}
+  .doc-title{background:#a8ff57;color:#08080a;text-align:center;padding:9px;
+    font-size:12px;font-weight:800;letter-spacing:3px;text-transform:uppercase}
+  .body{padding:22px 32px}
+  .meta{display:flex;justify-content:space-between;margin-bottom:14px;
+    padding-bottom:12px;border-bottom:1px solid #eee;flex-wrap:wrap;gap:8px}
+  .inv-no{font-size:12px;font-weight:700;color:#444;margin-bottom:2px}
+  .inv-date{font-size:11px;color:#888}
+  .status-badge{display:inline-block;padding:3px 12px;border-radius:100px;font-size:10px;font-weight:800;letter-spacing:1px}
+  .s-paid   {background:#e8fff0;color:#1a7a00;border:1px solid #b0e0c0}
+  .s-partial{background:#fff8e0;color:#a06000;border:1px solid #e0c070}
+  .s-pending{background:#fff0f0;color:#cc0000;border:1px solid #f0c0c0}
+  .member-card{background:#f9f9f9;border-radius:8px;padding:12px 14px;margin-bottom:14px}
+  .member-name{font-size:16px;font-weight:800;color:#111;margin-bottom:3px}
+  .member-meta{font-size:11px;color:#666;line-height:1.7}
+  .member-id{display:inline-block;background:#e8f0ff;color:#1a3a9a;border-radius:4px;
+    padding:2px 7px;font-family:monospace;font-size:11px;font-weight:700}
+  .pt-box{background:#f0f8ff;border:1px solid #b0d8f0;border-radius:8px;
+    padding:12px 14px;margin-bottom:14px}
+  .pt-title{font-size:13px;font-weight:800;color:#0a4a7a;margin-bottom:6px}
+  .pt-dates{font-size:12px;color:#1a5a8a;line-height:1.8}
+  .pt-days-badge{display:inline-block;background:#1a5a8a;color:#fff;border-radius:4px;
+    padding:2px 10px;font-size:12px;font-weight:700;margin-left:6px}
+  .billing{margin-bottom:14px}
+  .b-row{display:flex;justify-content:space-between;align-items:center;
+    padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:12px;color:#555}
+  .b-row:last-child{border-bottom:none}
+  .b-row.gst .val{color:#e05000}
+  .b-row.total{background:#f8f8f8;margin:4px -4px 0;padding:8px 4px;
+    border-radius:6px;border-bottom:none}
+  .b-row.total .lbl{font-size:13px;font-weight:800;color:#111}
+  .b-row.total .val{font-size:16px;font-weight:800;color:#111}
+  .b-row.paid  .val{color:#1a7a00;font-weight:800}
+  .b-row.bal   .val{color:#cc0000;font-weight:800}
+  .prorated-note{background:#fff8e8;border:1px solid #f0d090;border-radius:6px;
+    padding:8px 12px;margin-bottom:12px;font-size:11px;color:#8a5000;line-height:1.6}
+  .footer{text-align:center;padding:16px 32px;border-top:1px solid #eee;
+    font-size:10px;color:#999;line-height:1.8;background:#fafafa}
+  @media print{body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0}}
+`;
+
+function buildPtBillHtml(b) {
+  const statusCls = b.status === "paid" ? "s-paid" : b.status === "partial" ? "s-partial" : "s-pending";
+  const isProrated = b.pt_days < b.full_pt_days;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+    <title>PT Renewal Bill — ${b.member_name}</title>
+    <style>${PT_BILL_CSS}</style></head><body>
+    <div class="page">
+      <div class="header">
+        <div class="gym-name">${b.gym_name || "Gym"}</div>
+        <div class="gym-sub">${b.gym_address || ""}${b.gym_phone ? " · " + b.gym_phone : ""}${b.gym_email ? " · " + b.gym_email : ""}</div>
+        ${b.gym_gstin ? `<div class="gym-gstin">GSTIN: ${b.gym_gstin}</div>` : ""}
+      </div>
+      <div class="doc-title">Personal Training Renewal Receipt</div>
+      <div class="body">
+        <div class="meta">
+          <div>
+            <div class="inv-no">${b.invoice_number}</div>
+            <div class="inv-date">Date: ${b.date}</div>
+          </div>
+          <div>
+            <span class="status-badge ${statusCls}">${b.status.toUpperCase()}</span>
+          </div>
+        </div>
+
+        <div class="member-card">
+          <div class="member-name">${b.member_name}</div>
+          <div class="member-meta">
+            <span class="member-id">${b.member_id}</span>
+            ${b.phone ? ` &nbsp;·&nbsp; ${b.phone}` : ""}
+            ${b.email ? ` &nbsp;·&nbsp; ${b.email}` : ""}<br>
+            Plan: <strong>${b.plan_name || "—"}</strong> &nbsp;·&nbsp; Plan valid till: <strong>${b.plan_valid_to}</strong><br>
+            Trainer: <strong>${b.trainer_name}</strong> (${b.trainer_id})
+          </div>
+        </div>
+
+        <div class="pt-box">
+          <div class="pt-title">Personal Training Period</div>
+          <div class="pt-dates">
+            Start: <strong>${b.pt_start_date}</strong> &nbsp;&rarr;&nbsp; End: <strong>${b.pt_end_date}</strong>
+            <span class="pt-days-badge">${b.pt_days} days</span>
+          </div>
+        </div>
+
+        ${isProrated ? `<div class="prorated-note">
+          <strong>Prorated PT Fee:</strong> Only ${b.pt_days} days remain in the membership plan.
+          Fee calculated as ${b.pt_days}/${b.full_pt_days} of the full monthly PT fee.
+        </div>` : ""}
+
+        <div class="billing">
+          <div class="b-row"><span class="lbl">PT Base Fee (${b.pt_days} days)</span><span class="val">&#8377;${fmt(b.base_amount)}</span></div>
+          <div class="b-row gst"><span class="lbl">GST (${b.gst_rate}%)</span><span class="val">&#8377;${fmt(b.gst_amount)}</span></div>
+          <div class="b-row total"><span class="lbl">Total Amount</span><span class="val">&#8377;${fmt(b.total_amount)}</span></div>
+          <div class="b-row paid"><span class="lbl">Amount Paid</span><span class="val">&#8377;${fmt(b.amount_paid)}</span></div>
+          ${parseFloat(b.balance) > 0 ? `<div class="b-row bal"><span class="lbl">Balance Due</span><span class="val">&#8377;${fmt(b.balance)}</span></div>` : ""}
+        </div>
+        ${b.mode_of_payment ? `<div style="font-size:11px;color:#888;margin-bottom:12px;">Mode of Payment: <strong style="color:#555">${b.mode_of_payment.toUpperCase()}</strong></div>` : ""}
+        ${b.notes ? `<div style="font-size:11px;color:#888;margin-bottom:12px;background:#f5f5f5;border-radius:6px;padding:8px 12px;">Note: ${b.notes}</div>` : ""}
+      </div>
+      <div class="footer">
+        Thank you for your continued commitment to your fitness journey!<br>
+        <strong>${b.gym_name || "Gym"}</strong> — This is a computer-generated receipt.
+      </div>
+    </div>
+  </body></html>`;
+}
+
+function downloadPtBill(bill) {
+  const html  = buildPtBillHtml(bill);
+  const blob  = new Blob([html], { type: "text/html" });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement("a");
+  a.href      = url;
+  a.download  = `PT-Renewal-${bill.member_name.replace(/\s+/g, "-")}-${bill.pt_start_date}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ─── PT Renewal Modal ─────────────────────────────────────────────────────── */
+function PTRenewalModal({ assignment, onClose, onSave }) {
+  const [preview, setPreview]         = useState(null);
+  const [loadingPreview, setLP]       = useState(true);
+  const [amountPaid, setAmountPaid]   = useState("");
+  const [mode, setMode]               = useState("cash");
+  const [notes, setNotes]             = useState("");
+  const [saving, setSaving]           = useState(false);
+  const [bill, setBill]               = useState(null);
+
+  useEffect(() => {
+    api.get(`/members/assign-trainer/${assignment.id}/pt-renewal-preview/`)
+      .then(r => {
+        setPreview(r.data);
+        if (r.data.can_renew) setAmountPaid(String(r.data.total_amount || ""));
+      })
+      .catch(() => setPreview({ can_renew: false, reason: "Failed to load preview." }))
+      .finally(() => setLP(false));
+  }, [assignment.id]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!preview?.can_renew) return;
+    setSaving(true);
+    try {
+      const res = await api.post(`/members/assign-trainer/${assignment.id}/renew-pt/`, {
+        amount_paid:     parseFloat(amountPaid || 0),
+        mode_of_payment: mode,
+        notes,
+      });
+      const billData = res.data.bill;
+      setBill(billData);
+      toast.success(`PT renewed for ${preview.pt_days} days!`);
+      onSave();
+    } catch (err) {
+      const d = err.response?.data;
+      toast.error(d?.detail ?? "PT renewal failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={bill ? undefined : onClose}>
+      <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">Renew Personal Training</div>
+
+        {loadingPreview ? (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>Loading…</div>
+        ) : !preview?.can_renew ? (
+          <>
+            <div style={{
+              background: "rgba(220,50,50,.08)", border: "1px solid rgba(220,50,50,.3)",
+              borderRadius: 8, padding: "12px 14px", color: "#e05555", fontSize: 13, marginBottom: 16,
+            }}>
+              {preview?.reason || "Cannot renew PT at this time."}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={onClose}>Close</button>
+            </div>
+          </>
+        ) : bill ? (
+          /* ── Success state: show bill download ── */
+          <>
+            <div style={{
+              background: "rgba(168,255,87,.08)", border: "1px solid rgba(168,255,87,.3)",
+              borderRadius: 8, padding: "12px 14px", color: "var(--accent)", fontSize: 13, marginBottom: 16,
+            }}>
+              PT renewed successfully for <strong>{bill.pt_days} days</strong> ({bill.pt_start_date} → {bill.pt_end_date}).
+            </div>
+
+            {/* Summary */}
+            <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ color: "var(--text2)" }}>Total Amount</span>
+                <span style={{ fontWeight: 700 }}>₹{fmt(bill.total_amount)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ color: "var(--text2)" }}>Amount Paid</span>
+                <span style={{ fontWeight: 700, color: "var(--accent)" }}>₹{fmt(bill.amount_paid)}</span>
+              </div>
+              {parseFloat(bill.balance) > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "var(--text2)" }}>Balance Due</span>
+                  <span style={{ fontWeight: 700, color: "#e05555" }}>₹{fmt(bill.balance)}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={onClose}>Close</button>
+              <button className="btn btn-primary" onClick={() => downloadPtBill(bill)}>
+                Download PT Bill
+              </button>
+            </div>
+          </>
+        ) : (
+          /* ── Renewal form ── */
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Member + trainer info */}
+            <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: "var(--text1)", marginBottom: 4 }}>
+                {preview.member_name}
+                <span style={{ fontSize: 11, marginLeft: 8, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{preview.member_id}</span>
+              </div>
+              <div style={{ color: "var(--text2)", fontSize: 12, lineHeight: 1.7 }}>
+                {preview.member_phone && <span>{preview.member_phone} &nbsp;·&nbsp; </span>}
+                Trainer: <strong>{preview.trainer_name}</strong><br />
+                Plan: <strong>{preview.plan_name || "—"}</strong> &nbsp;·&nbsp; Valid till: <strong>{preview.plan_valid_to}</strong>
+              </div>
+            </div>
+
+            {/* PT period */}
+            <div style={{ background: "rgba(100,160,255,.07)", border: "1px solid rgba(100,160,255,.2)", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: "var(--text1)", marginBottom: 6 }}>PT Period</div>
+              <div style={{ color: "var(--text2)", lineHeight: 1.8 }}>
+                {preview.pt_start_date} &rarr; {preview.pt_end_date}
+                <span style={{
+                  marginLeft: 8, background: "var(--accent)", color: "#fff",
+                  borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700,
+                }}>
+                  {preview.pt_days} days
+                </span>
+              </div>
+              {preview.pt_days < 30 && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#e09020" }}>
+                  Only {preview.pt_days} of 30 days available — prorated to match remaining plan duration.
+                </div>
+              )}
+            </div>
+
+            {/* Amount breakdown */}
+            <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: "var(--text1)", marginBottom: 8 }}>Amount Breakdown</div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                <span>PT Base Fee ({preview.pt_days} days)</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmt(preview.base_amount)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
+                <span>GST ({preview.gst_rate}%)</span>
+                <span style={{ fontFamily: "var(--font-mono)", color: "#e09020" }}>₹{fmt(preview.gst_amount)}</span>
+              </div>
+              <div style={{
+                display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--accent)",
+                borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 4,
+              }}>
+                <span>Total</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmt(preview.total_amount)}</span>
+              </div>
+            </div>
+
+            {/* Payment collection */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Amount to Collect (₹)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amountPaid}
+                  onChange={e => setAmountPaid(e.target.value)}
+                  placeholder="0 to collect later"
+                />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Mode of Payment</label>
+                <select className="form-input" value={mode} onChange={e => setMode(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Notes (optional)</label>
+              <input className="form-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional note" />
+            </div>
+
+            <div style={{ fontSize: 11, color: "var(--text3)" }}>
+              Leave amount as 0 to record the renewal now and collect payment later.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? "Renewing…" : `Renew PT — ₹${fmt(preview.total_amount)}`}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Assignment Modal ─────────────────────────────────────────────────────── */
 function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onSave, newMemberId, pendingMember }) {
   const isEdit = !!assignment?.id;
 
-  // Only members whose plan allows a personal trainer
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
-  const trainerPlans = plans.filter(p => p.is_active !== false);
+  const trainerPlans    = plans.filter(p => p.is_active !== false);
 
   const [form, setForm] = useState(() => {
     if (isEdit) {
@@ -31,6 +359,8 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         startingtime: assignment.startingtime?.slice(0, 5) ?? "06:00",
         endingtime: assignment.endingtime?.slice(0, 5) ?? "07:00",
         working_days: daysFromStr(assignment.working_days),
+        pt_start_date: assignment.pt_start_date ?? "",
+        pt_end_date: assignment.pt_end_date ?? "",
       };
     }
     if (pendingMember) {
@@ -49,12 +379,11 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
     };
   });
 
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]                   = useState(false);
   const [ptAmountToCollect, setPtAmountToCollect] = useState("");
-  const [modeOfPayment, setModeOfPayment] = useState("cash");
+  const [modeOfPayment, setModeOfPayment]     = useState("cash");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  // Auto-populate plan when member is pre-selected from URL
   useEffect(() => {
     if (newMemberId && !isEdit) {
       const found = eligibleMembers.find(m => String(m.id) === String(newMemberId));
@@ -62,7 +391,6 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
     }
   }, [newMemberId, eligibleMembers, isEdit]);
 
-  // When member changes (create mode), auto-populate plan from their current plan
   const handleMemberChange = (memberId) => {
     set("member", memberId);
     if (!memberId) return;
@@ -70,7 +398,6 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
     if (found?.plan) set("plan", found.plan);
   };
 
-  // Amount breakdown
   const selectedTrainer   = trainers.find(t => String(t.id) === String(form.trainer));
   const selectedMemberObj = allMembers.find(m => String(m.id) === String(form.member));
   const memberPlanId      = pendingMember ? pendingMember.plan : selectedMemberObj?.plan;
@@ -81,7 +408,6 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   const ptFeeWithGst      = ptFee + ptFeeGst;
   const grandTotal        = planWithGst + ptFeeWithGst;
 
-  // Auto-fill PT amount when trainer is selected (GST-inclusive)
   useEffect(() => {
     if (ptFeeWithGst > 0) setPtAmountToCollect(ptFeeWithGst);
     else setPtAmountToCollect("");
@@ -97,55 +423,48 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!pendingMember && !form.member) {
-      toast.error("Member is required.");
-      return;
-    }
-    if (!form.trainer) {
-      toast.error("Trainer is required.");
-      return;
-    }
-    if (form.working_days.length === 0) {
-      toast.error("Select at least one working day.");
-      return;
-    }
+    if (!pendingMember && !form.member) { toast.error("Member is required."); return; }
+    if (!form.trainer)                  { toast.error("Trainer is required."); return; }
+    if (form.working_days.length === 0) { toast.error("Select at least one working day."); return; }
     setSaving(true);
     try {
       if (isEdit) {
         const payload = {
-          member: Number(form.member),
-          trainer: Number(form.trainer),
-          plan: form.plan ? Number(form.plan) : null,
+          member:       Number(form.member),
+          trainer:      Number(form.trainer),
+          plan:         form.plan ? Number(form.plan) : null,
           startingtime: form.startingtime,
-          endingtime: form.endingtime,
+          endingtime:   form.endingtime,
           working_days: daysToStr(form.working_days),
         };
+        if (form.pt_start_date) payload.pt_start_date = form.pt_start_date;
+        if (form.pt_end_date)   payload.pt_end_date   = form.pt_end_date;
         await api.patch(`/members/assign-trainer/${assignment.id}/`, payload);
         toast.success("Assignment updated!");
         onSave();
       } else if (pendingMember) {
-        // Step 1: Create the member (deferred from enrollment) — no installment recorded yet
+        // Step 1: Create the member
         const mRes = await api.post("/members/list/", {
-          name: pendingMember.name,
-          phone: pendingMember.phone,
-          email: pendingMember.email || "",
-          gender: pendingMember.gender || "",
-          address: pendingMember.address || "",
-          notes: pendingMember.notes || "",
-          age: pendingMember.age || undefined,
-          plan_id: pendingMember.plan || undefined,
-          diet_id: pendingMember.diet || undefined,
-          foodType: pendingMember.foodType || "veg",
-          plan_type: pendingMember.plan_type,
+          name:            pendingMember.name,
+          phone:           pendingMember.phone,
+          email:           pendingMember.email || "",
+          gender:          pendingMember.gender || "",
+          address:         pendingMember.address || "",
+          notes:           pendingMember.notes || "",
+          age:             pendingMember.age || undefined,
+          plan_id:         pendingMember.plan || undefined,
+          diet_id:         pendingMember.diet || undefined,
+          foodType:        pendingMember.foodType || "veg",
+          plan_type:       pendingMember.plan_type,
           personal_trainer: true,
-          amount_paid: pendingMember.amount_paid || 0,
+          amount_paid:     pendingMember.amount_paid || 0,
           mode_of_payment: pendingMember.mode_of_payment || "cash",
-          renewal_date: pendingMember.renewal_date || undefined,
-          status: pendingMember.status || "active",
+          renewal_date:    pendingMember.renewal_date || undefined,
+          status:          pendingMember.status || "active",
         });
         const createdMemberId = mRes.data.id;
 
-        // Step 2: Assign trainer — send combined enrollment + PT fee as one transaction
+        // Step 2: Assign trainer with combined enrollment + PT fee
         const collectAmt = parseFloat(ptAmountToCollect || 0);
         const enrollAmt  = parseFloat(pendingMember.amount_paid || 0);
         const combined   = enrollAmt + collectAmt;
@@ -164,20 +483,19 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
         toast.success(
           combined > 0
-            ? `Member enrolled & trainer assigned! ₹${combined.toLocaleString("en-IN")} recorded.`
+            ? `Member enrolled & trainer assigned! ₹${fmtD(combined)} recorded.`
             : "Member enrolled & trainer assigned!"
         );
-
         sessionStorage.removeItem("pendingMember");
         onSave();
       } else {
         // Existing member flow
         await api.post("/members/assign-trainer/", {
-          member: Number(form.member),
-          trainer: Number(form.trainer),
-          plan: form.plan ? Number(form.plan) : null,
+          member:       Number(form.member),
+          trainer:      Number(form.trainer),
+          plan:         form.plan ? Number(form.plan) : null,
           startingtime: form.startingtime,
-          endingtime: form.endingtime,
+          endingtime:   form.endingtime,
           working_days: daysToStr(form.working_days),
         });
 
@@ -185,11 +503,11 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         if (collectAmt > 0) {
           try {
             await api.post(`/members/list/${form.member}/pay-balance/`, {
-              amount_paid: collectAmt,
+              amount_paid:     collectAmt,
               mode_of_payment: modeOfPayment,
-              notes: "PT fee collected at assignment",
+              notes:           "PT fee collected at assignment",
             });
-            toast.success(`Trainer assigned! ₹${collectAmt.toLocaleString("en-IN")} PT fee recorded.`);
+            toast.success(`Trainer assigned! ₹${fmtD(collectAmt)} PT fee recorded.`);
           } catch {
             toast.success("Trainer assigned!");
             toast.error("PT fee collection failed — record it manually in Payments.");
@@ -201,9 +519,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
       }
     } catch (err) {
       const d = err.response?.data;
-      toast.error(
-        d?.detail ?? (typeof d === "object" ? Object.values(d).flat().join(" ") : "Something went wrong")
-      );
+      toast.error(d?.detail ?? (typeof d === "object" ? Object.values(d).flat().join(" ") : "Something went wrong"));
     } finally {
       setSaving(false);
     }
@@ -220,7 +536,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             border: "1px solid rgba(168,255,87,.3)", borderRadius: 8, padding: "10px 14px",
             marginBottom: 14, fontSize: 13,
           }}>
-            Completing enrollment for <strong>{pendingMember.name}</strong> — assign a trainer below to add them to the system.
+            Completing enrollment for <strong>{pendingMember.name}</strong> — assign a trainer below.
           </div>
         )}
 
@@ -236,7 +552,6 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         )}
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
           {/* Member */}
           <div className="form-group">
             <label className="form-label">
@@ -250,10 +565,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             {isEdit ? (
               <input className="form-input" value={assignment.member_name} disabled />
             ) : pendingMember ? (
-              <div style={{
-                background: "var(--card-bg)", border: "1px solid var(--border)",
-                borderRadius: 8, padding: "10px 14px", fontSize: 13,
-              }}>
+              <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
                 <div style={{ fontWeight: 600, color: "var(--text1)" }}>{pendingMember.name}</div>
                 <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
                   {pendingMember.phone}
@@ -265,9 +577,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
               <select className="form-input" value={form.member} onChange={e => handleMemberChange(e.target.value)} required>
                 <option value="">— Select eligible member —</option>
                 {eligibleMembers.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.member_id_display} — {m.name} ({m.plan_name})
-                  </option>
+                  <option key={m.id} value={m.id}>{m.member_id_display} — {m.name} ({m.plan_name})</option>
                 ))}
               </select>
             )}
@@ -279,15 +589,11 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             <select className="form-input" value={form.trainer} onChange={e => set("trainer", e.target.value)} required>
               <option value="">— Select trainer —</option>
               {trainers.map(t => (
-                <option key={t.id} value={t.id}>
-                  S{String(t.id).padStart(4, "0")} — {t.name}
-                </option>
+                <option key={t.id} value={t.id}>S{String(t.id).padStart(4, "0")} — {t.name}</option>
               ))}
             </select>
             {trainers.length === 0 && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                No active trainers found. Add a staff member with role "Trainer".
-              </span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>No active trainers found.</span>
             )}
           </div>
 
@@ -295,15 +601,11 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
           <div className="form-group">
             <label className="form-label">
               Plan
-              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                (Standard / Premium with Personal Trainer)
-              </span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>(Standard / Premium with PT)</span>
             </label>
             <select className="form-input" value={form.plan} onChange={e => set("plan", e.target.value)}>
               <option value="">— No specific plan —</option>
-              {trainerPlans.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
+              {trainerPlans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
 
@@ -335,40 +637,74 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                   userSelect: "none", transition: "background 0.15s",
                 }}>
                   <input type="checkbox" style={{ display: "none" }}
-                    checked={form.working_days.includes(idx)}
-                    onChange={() => toggleDay(idx)} />
+                    checked={form.working_days.includes(idx)} onChange={() => toggleDay(idx)} />
                   {day}
                 </label>
               ))}
             </div>
           </div>
 
-          {/* Amount breakdown — shown when trainer is selected */}
-          {form.trainer && planWithGst > 0 && (
-            <div style={{
-              background: "var(--card-bg)", border: "1px solid var(--border)",
-              borderRadius: 8, padding: "12px 14px", fontSize: 13,
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>
-                Amount Breakdown
+          {/* PT Period — edit only */}
+          {isEdit && (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                PT Period Override
               </div>
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">PT Start Date</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={form.pt_start_date}
+                    onChange={e => set("pt_start_date", e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">PT End Date (Expiry)</label>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={form.pt_end_date}
+                    onChange={e => set("pt_end_date", e.target.value)}
+                  />
+                </div>
+              </div>
+              {form.pt_start_date && form.pt_end_date && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  {(() => {
+                    const days = Math.ceil((new Date(form.pt_end_date) - new Date(form.pt_start_date)) / 86400000);
+                    return days > 0 ? `${days} day${days !== 1 ? "s" : ""} PT period` : "End must be after start";
+                  })()}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                Use this to manually adjust the PT expiry for testing or corrections.
+              </div>
+            </div>
+          )}
+
+          {/* Amount breakdown */}
+          {form.trainer && planWithGst > 0 && (
+            <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 13 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>Amount Breakdown</div>
               <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
                 <span>Plan (incl. GST)</span>
-                <span style={{ fontFamily: "var(--font-mono)" }}>₹{planWithGst.toLocaleString("en-IN")}</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(planWithGst)}</span>
               </div>
               {ptFee > 0 && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
                     <span>Personal Trainer Fee (base)</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFee.toLocaleString("en-IN")}</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFee)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
                     <span>GST on PT Fee (18%)</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFeeGst.toLocaleString("en-IN")}</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFeeGst)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
                     <span>Personal Trainer Fee (incl. GST)</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{ptFeeWithGst.toLocaleString("en-IN")}</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFeeWithGst)}</span>
                   </div>
                 </>
               )}
@@ -378,7 +714,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                 borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 4,
               }}>
                 <span>Total</span>
-                <span style={{ fontFamily: "var(--font-mono)" }}>₹{grandTotal.toLocaleString("en-IN")}</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(grandTotal)}</span>
               </div>
               {ptFee === 0 && (
                 <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 6 }}>
@@ -386,31 +722,18 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                 </div>
               )}
 
-              {/* Collect PT fee immediately */}
               {!isEdit && ptFeeWithGst > 0 && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>
-                    Collect PT Fee Now
-                  </div>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>Collect PT Fee Now</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>
-                        Amount (₹)
-                      </label>
-                      <input
-                        className="form-input"
-                        type="number"
-                        min="0"
-                        max={ptFeeWithGst}
-                        value={ptAmountToCollect}
-                        onChange={e => setPtAmountToCollect(e.target.value)}
-                        placeholder="0 to collect later"
-                      />
+                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>Amount (₹)</label>
+                      <input className="form-input" type="number" min="0" max={ptFeeWithGst}
+                        value={ptAmountToCollect} onChange={e => setPtAmountToCollect(e.target.value)}
+                        placeholder="0 to collect later" />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>
-                        Mode
-                      </label>
+                      <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>Mode</label>
                       <select className="form-input" value={modeOfPayment} onChange={e => setModeOfPayment(e.target.value)}>
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
@@ -419,9 +742,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                       </select>
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
-                    Leave 0 to collect later via Payments.
-                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Leave 0 to collect later via Payments.</div>
                 </div>
               )}
             </div>
@@ -439,7 +760,48 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   );
 }
 
-/* ─── Main Page ────────────────────────────────────── */
+/* ─── PT Status badge helper ───────────────────────────────────────────────── */
+function PTStatusBadge({ assignment }) {
+  const days = assignment.pt_days_remaining;
+  const canRenew = assignment.can_renew_pt;
+
+  if (days === null || days === undefined) {
+    // No PT dates yet (legacy assignment)
+    return (
+      <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>
+    );
+  }
+
+  if (days > 0) {
+    const urgency = days <= 5 ? "#e09020" : days <= 10 ? "#c07000" : "var(--accent)";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span className="badge badge-green" style={{ fontSize: 11 }}>Active</span>
+        <span style={{ fontSize: 11, color: urgency, fontWeight: days <= 5 ? 700 : 400 }}>
+          {days} day{days !== 1 ? "s" : ""} left
+        </span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+          Expires: {assignment.pt_end_date}
+        </span>
+      </div>
+    );
+  }
+
+  // Expired
+  const expiredDays = Math.abs(days);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span className="badge badge-red" style={{ fontSize: 11 }}>
+        {canRenew ? "PT Expired" : "PT Expired"}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        {expiredDays} day{expiredDays !== 1 ? "s" : ""} ago
+      </span>
+    </div>
+  );
+}
+
+/* ─── Main Page ────────────────────────────────────────────────────────────── */
 export default function TrainerAssignments() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -448,25 +810,25 @@ export default function TrainerAssignments() {
   const fromPage    = urlParams.get("from");
   const isPending   = urlParams.get("pending") === "1";
 
-  const [assignments, setAssignments] = useState([]);
-  const [allMembers, setAllMembers] = useState([]);
-  const [trainers, setTrainers] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | "new" | assignment obj
+  const [assignments, setAssignments]   = useState([]);
+  const [allMembers, setAllMembers]     = useState([]);
+  const [trainers, setTrainers]         = useState([]);
+  const [plans, setPlans]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [modal, setModal]               = useState(null);       // null | "new" | assignment obj
+  const [ptRenewalModal, setPtRenewalModal] = useState(null);   // null | assignment obj
   const [filterMember, setFilterMember] = useState("");
   const [filterTrainer, setFilterTrainer] = useState("");
   const [confirmState, setConfirmState] = useState(null);
   const [pendingMember, setPendingMember] = useState(null);
 
-  // Eligible members for the filter dropdown (all plans including non-eligible for admin visibility)
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
-      if (filterMember) params.member = filterMember;
+      if (filterMember)  params.member  = filterMember;
       if (filterTrainer) params.trainer = filterTrainer;
       const res = await api.get("/members/assign-trainer/", { params });
       const raw = res.data;
@@ -493,14 +855,10 @@ export default function TrainerAssignments() {
     }).catch(() => toast.error("Failed to load reference data."));
   }, []);
 
-  // Auto-open modal when redirected from enrollment
   useEffect(() => {
-    if (newMemberId && allMembers.length > 0) {
-      setModal("new");
-    }
+    if (newMemberId && allMembers.length > 0) setModal("new");
   }, [newMemberId, allMembers]);
 
-  // Load pending member from sessionStorage when redirected with pending=1
   useEffect(() => {
     if (isPending) {
       const stored = sessionStorage.getItem("pendingMember");
@@ -515,12 +873,33 @@ export default function TrainerAssignments() {
     }
   }, [isPending]);
 
+  const handlePayPtTrainerFee = (assignment) => {
+    const pending = assignment.pending_pt_renewal_trainer_amount || 0;
+    setConfirmState({
+      title:       "Pay PT Renewal Trainer Fee",
+      message:     `Pay ₹${pending.toLocaleString("en-IN", { minimumFractionDigits: 2 })} to ${assignment.trainer_name} for all pending PT renewal periods? This will be recorded as an expense.`,
+      confirmText: "Pay",
+      danger:      false,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.post(`/members/assign-trainer/${assignment.id}/pay-pt-trainer-fee/`);
+          toast.success(`₹${pending.toLocaleString("en-IN")} PT renewal fee paid to ${assignment.trainer_name}.`);
+          load();
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Payment failed.");
+        }
+      },
+      onCancel: () => setConfirmState(null),
+    });
+  };
+
   const handlePayTrainerFee = (assignment) => {
     setConfirmState({
-      title: "Pay Trainer Fee",
-      message: `Pay ₹${(assignment.trainer_pt_amt || 0).toLocaleString("en-IN")} to ${assignment.trainer_name} for ${assignment.member_name}? This will be recorded as an expense.`,
+      title:       "Pay Trainer Fee",
+      message:     `Pay ₹${(assignment.trainer_pt_amt || 0).toLocaleString("en-IN")} to ${assignment.trainer_name} for ${assignment.member_name}? This will be recorded as an expense.`,
       confirmText: "Pay",
-      danger: false,
+      danger:      false,
       onConfirm: async () => {
         setConfirmState(null);
         try {
@@ -537,10 +916,10 @@ export default function TrainerAssignments() {
 
   const handleDelete = (id) => {
     setConfirmState({
-      title: "Delete Assignment",
-      message: "Delete this trainer assignment?",
+      title:       "Delete Assignment",
+      message:     "Delete this trainer assignment?",
       confirmText: "Delete",
-      danger: true,
+      danger:      true,
       onConfirm: async () => {
         setConfirmState(null);
         try {
@@ -558,6 +937,7 @@ export default function TrainerAssignments() {
   return (
     <div className="page">
       {confirmState && <ConfirmModal {...confirmState} />}
+
       <div className="page-header">
         <div>
           {fromPage && (
@@ -569,30 +949,16 @@ export default function TrainerAssignments() {
           <h1 className="page-title">Trainer Assignments</h1>
           <p className="page-sub">Personal trainer scheduling for Standard &amp; Premium members</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal("new")}>
-          + Assign Trainer
-        </button>
+        <button className="btn btn-primary" onClick={() => setModal("new")}>+ Assign Trainer</button>
       </div>
 
-      {/* Eligible member count info */}
-      <div style={{
-        display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center",
-      }}>
-        <span style={{
-          fontSize: 13, color: "var(--text-muted)",
-          background: "var(--card-bg)", border: "1px solid var(--border)",
-          borderRadius: 8, padding: "4px 12px",
-        }}>
+      {/* Info pills */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 12px" }}>
           {eligibleMembers.length} eligible member{eligibleMembers.length !== 1 ? "s" : ""}
-          <span style={{ marginLeft: 4, color: "var(--text-muted)", fontSize: 11 }}>
-            (Standard / Premium + Personal Trainer plan)
-          </span>
+          <span style={{ marginLeft: 4, color: "var(--text-muted)", fontSize: 11 }}>(Standard / Premium + PT)</span>
         </span>
-        <span style={{
-          fontSize: 13, color: "var(--text-muted)",
-          background: "var(--card-bg)", border: "1px solid var(--border)",
-          borderRadius: 8, padding: "4px 12px",
-        }}>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 12px" }}>
           {trainers.length} active trainer{trainers.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -643,6 +1009,7 @@ export default function TrainerAssignments() {
                 <th>Trainer</th>
                 <th>Time Slot</th>
                 <th>Days</th>
+                <th>PT Period</th>
                 <th>Member PT Status</th>
                 <th>Trainer Fee</th>
                 <th>Actions</th>
@@ -650,87 +1017,146 @@ export default function TrainerAssignments() {
             </thead>
             <tbody>
               {assignments.map(a => {
-                const ptAmt           = a.trainer_pt_amt || 0;
-                const memberPaid      = a.member_amount_paid || 0;
+                const ptAmt      = a.trainer_pt_amt || 0;
+                const memberPaid = a.member_amount_paid || 0;
                 const memberCoveredPT = ptAmt > 0 && memberPaid >= ptAmt;
+                const canRenew   = a.can_renew_pt;
+
                 return (
-                <tr key={a.id}>
-                  <td>
-                    <div>
-                      <span className="badge badge-blue" style={{ marginRight: 6, fontSize: 11 }}>
-                        {a.member_display_id}
-                      </span>
-                      {a.member_name}
-                    </div>
-                  </td>
-                  <td>
-                    {a.plan_name
-                      ? <span className="badge badge-green">{a.plan_name}</span>
-                      : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
-                  </td>
-                  <td>
-                    <div>
-                      <span className="badge badge-gray" style={{ marginRight: 6, fontSize: 11 }}>
-                        {a.trainer_display_id}
-                      </span>
-                      {a.trainer_name}
-                    </div>
-                  </td>
-                  <td style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                    {a.startingtime?.slice(0, 5)} – {a.endingtime?.slice(0, 5)}
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                      {(a.working_day_names ?? []).map(d => (
-                        <span key={d} className="badge badge-yellow"
-                          style={{ padding: "1px 6px", fontSize: 11 }}>{d}</span>
-                      ))}
-                    </div>
-                  </td>
-
-                  {/* Member PT payment status */}
-                  <td>
-                    {ptAmt > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span className={`badge ${memberCoveredPT ? "badge-green" : "badge-yellow"}`} style={{ fontSize: 11 }}>
-                          {memberCoveredPT ? "PT Fee Covered" : "PT Fee Pending"}
+                  <tr key={a.id}>
+                    <td>
+                      <div>
+                        <span className="badge badge-blue" style={{ marginRight: 6, fontSize: 11 }}>
+                          {a.member_display_id}
                         </span>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                          ₹{memberPaid.toLocaleString("en-IN")} / ₹{ptAmt.toLocaleString("en-IN")}
-                        </span>
+                        {a.member_name}
                       </div>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
-                    )}
-                  </td>
+                      {a.member_plan_expiry && (
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                          Plan till: {a.member_plan_expiry}
+                        </div>
+                      )}
+                    </td>
 
-                  {/* Pay trainer fee */}
-                  <td>
-                    {ptAmt > 0 ? (
-                      a.trainer_fee_paid ? (
-                        <span className="badge badge-green" style={{ fontSize: 11 }}>Paid to Trainer</span>
+                    <td>
+                      {a.plan_name
+                        ? <span className="badge badge-green">{a.plan_name}</span>
+                        : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>}
+                    </td>
+
+                    <td>
+                      <div>
+                        <span className="badge badge-gray" style={{ marginRight: 6, fontSize: 11 }}>{a.trainer_display_id}</span>
+                        {a.trainer_name}
+                      </div>
+                    </td>
+
+                    <td style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      {a.startingtime?.slice(0, 5)} – {a.endingtime?.slice(0, 5)}
+                    </td>
+
+                    <td>
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                        {(a.working_day_names ?? []).map(d => (
+                          <span key={d} className="badge badge-yellow" style={{ padding: "1px 6px", fontSize: 11 }}>{d}</span>
+                        ))}
+                      </div>
+                    </td>
+
+                    {/* PT Period column */}
+                    <td style={{ minWidth: 140 }}>
+                      <PTStatusBadge assignment={a} />
+                      {/* Renew PT button */}
+                      <div style={{ marginTop: 6 }}>
+                        {canRenew ? (
+                          <button
+                            className="btn btn-sm btn-primary"
+                            style={{ fontSize: 11, padding: "3px 10px" }}
+                            onClick={() => setPtRenewalModal(a)}
+                            title={a.pt_renewal_days < 30
+                              ? `Renew PT for ${a.pt_renewal_days} days (prorated) — ₹${fmt(a.pt_renewal_amount)}`
+                              : `Renew PT for 30 days — ₹${fmt(a.pt_renewal_amount)}`}
+                          >
+                            Renew PT
+                            {a.pt_renewal_days > 0 && (
+                              <span style={{ marginLeft: 4, opacity: 0.8 }}>({a.pt_renewal_days}d)</span>
+                            )}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                            {a.member_status !== "active"
+                              ? "Plan inactive"
+                              : "Plan expired"}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Member PT payment status */}
+                    <td>
+                      {ptAmt > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className={`badge ${memberCoveredPT ? "badge-green" : "badge-yellow"}`} style={{ fontSize: 11 }}>
+                            {memberCoveredPT ? "PT Fee Covered" : "PT Fee Pending"}
+                          </span>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            ₹{memberPaid.toLocaleString("en-IN")} / ₹{ptAmt.toLocaleString("en-IN")}
+                          </span>
+                        </div>
                       ) : (
-                        <button
-                          className="btn btn-sm btn-primary"
-                          disabled={!memberCoveredPT}
-                          title={!memberCoveredPT ? "Member hasn't paid PT fee yet" : `Pay ₹${ptAmt.toLocaleString("en-IN")} to ${a.trainer_name}`}
-                          onClick={() => handlePayTrainerFee(a)}
-                        >
-                          Pay ₹{ptAmt.toLocaleString("en-IN")}
-                        </button>
-                      )
-                    ) : (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
-                    )}
-                  </td>
+                        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                      )}
+                    </td>
 
-                  <td>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => setModal(a)}>Edit</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(a.id)}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
+                    {/* Pay trainer fee (enrollment + PT renewals) */}
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {/* ── Initial enrollment fee ── */}
+                        {ptAmt > 0 ? (
+                          a.trainer_fee_paid ? (
+                            <span className="badge badge-green" style={{ fontSize: 11 }}>Enrollment Paid</span>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-primary"
+                              disabled={!memberCoveredPT}
+                              title={!memberCoveredPT ? "Member hasn't paid enrollment PT fee yet" : `Pay ₹${ptAmt.toLocaleString("en-IN")} to ${a.trainer_name}`}
+                              onClick={() => handlePayTrainerFee(a)}
+                            >
+                              Enroll ₹{ptAmt.toLocaleString("en-IN")}
+                            </button>
+                          )
+                        ) : null}
+
+                        {/* ── PT renewal pending payout ── */}
+                        {(() => {
+                          const pending = a.pending_pt_renewal_trainer_amount || 0;
+                          if (pending <= 0) return null;
+                          return (
+                            <button
+                              className="btn btn-sm btn-primary"
+                              style={{ background: "var(--accent-2, #4da6ff)", borderColor: "var(--accent-2, #4da6ff)" }}
+                              onClick={() => handlePayPtTrainerFee(a)}
+                              title={`Pay accumulated PT renewal trainer fee to ${a.trainer_name}`}
+                            >
+                              Renewal ₹{pending.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            </button>
+                          );
+                        })()}
+
+                        {/* ── No PT configured ── */}
+                        {ptAmt === 0 && (a.pending_pt_renewal_trainer_amount || 0) === 0 && (
+                          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setModal(a)}>Edit</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(a.id)}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -738,6 +1164,7 @@ export default function TrainerAssignments() {
         </div>
       )}
 
+      {/* Assignment Modal */}
       {modal && (
         <AssignmentModal
           assignment={modal === "new" ? null : modal}
@@ -746,15 +1173,24 @@ export default function TrainerAssignments() {
           plans={plans}
           newMemberId={modal === "new" ? newMemberId : null}
           pendingMember={modal === "new" ? pendingMember : null}
-          onClose={() => {
-            setModal(null);
-            // If user cancels a pending enrollment, keep sessionStorage so they can retry
-          }}
+          onClose={() => setModal(null)}
           onSave={() => {
             setModal(null);
             setPendingMember(null);
             load();
             if (fromPage) navigate(`/${fromPage}`);
+          }}
+        />
+      )}
+
+      {/* PT Renewal Modal */}
+      {ptRenewalModal && (
+        <PTRenewalModal
+          assignment={ptRenewalModal}
+          onClose={() => setPtRenewalModal(null)}
+          onSave={() => {
+            setPtRenewalModal(null);
+            load();
           }}
         />
       )}

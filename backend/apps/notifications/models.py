@@ -5,11 +5,13 @@ class Notification(models.Model):
     CHANNEL = [("whatsapp", "WhatsApp")]
     STATUS  = [("sent", "Sent"), ("failed", "Failed"), ("pending", "Pending")]
     TRIGGER = [
-        ("renewal_remind", "Renewal Reminder"),
-        ("renewal_confirm", "Renewal Confirmed"),
-        ("enrollment",      "New Enrollment"),
-        ("expiry",          "Membership Expired"),
-        ("manual",          "Manual"),
+        ("renewal_remind",  "Renewal Reminder"),
+        ("renewal_confirm",  "Renewal Confirmed"),
+        ("enrollment",       "New Enrollment"),
+        ("expiry",           "Membership Expired"),
+        ("manual",           "Manual"),
+        ("enquiry_welcome",  "Enquiry Welcome"),
+        ("enquiry_followup", "Enquiry Follow-up"),
     ]
 
     recipient_name  = models.CharField(max_length=150)

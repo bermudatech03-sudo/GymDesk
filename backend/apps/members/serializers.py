@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal, ROUND_HALF_UP
-from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment
+from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment, PTRenewal
 from apps.finances.gst_utils import get_gst_rate as _get_gst_rate
 
 
@@ -140,6 +140,15 @@ class AssignTrainerSerializer(serializers.Serializer):
     working_days = serializers.CharField(required=False, default="0,1,2,3,4,5,6")
 
 
+class PTRenewalSerializer(serializers.ModelSerializer):
+    member_name  = serializers.CharField(source="member.name",  read_only=True)
+    trainer_name = serializers.CharField(source="trainer.name", read_only=True)
+
+    class Meta:
+        model  = PTRenewal
+        fields = "__all__"
+
+
 class TrainerAssignmentSerializer(serializers.ModelSerializer):
     member_name        = serializers.CharField(source="member.name",  read_only=True)
     member_display_id  = serializers.SerializerMethodField()
@@ -150,6 +159,15 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
     trainer_pt_amt     = serializers.SerializerMethodField()
     member_amount_paid = serializers.SerializerMethodField()
     member_plan_total  = serializers.SerializerMethodField()
+    # PT period computed fields
+    pt_days_remaining               = serializers.SerializerMethodField()
+    pt_renewal_days                 = serializers.SerializerMethodField()
+    pt_renewal_amount               = serializers.SerializerMethodField()
+    can_renew_pt                    = serializers.SerializerMethodField()
+    member_plan_expiry              = serializers.SerializerMethodField()
+    member_status                   = serializers.SerializerMethodField()
+    # Pending trainer payout from PT renewals (unpaid PTRenewal records)
+    pending_pt_renewal_trainer_amount = serializers.SerializerMethodField()
 
     class Meta:
         model  = TrainerAssignment
@@ -166,7 +184,6 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
 
     def get_trainer_pt_amt(self, obj):
         from apps.finances.gst_utils import get_pt_payable_percent
-        from decimal import Decimal, ROUND_HALF_UP
         amt = obj.trainer.personal_trainer_amt
         if not amt:
             return 0
@@ -181,6 +198,66 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
     def get_member_plan_total(self, obj):
         payment = obj.member.payments.order_by("-created_at").first()
         return float(payment.total_with_gst) if payment else 0
+
+    def get_pt_days_remaining(self, obj):
+        """Days left in the current PT period (negative = expired)."""
+        if not obj.pt_end_date:
+            return None
+        from django.utils import timezone
+        return (obj.pt_end_date - timezone.localdate()).days
+
+    def get_member_plan_expiry(self, obj):
+        return str(obj.member.renewal_date) if obj.member.renewal_date else None
+
+    def get_member_status(self, obj):
+        return obj.member.status
+
+    def get_pt_renewal_days(self, obj):
+        """
+        Days available for the NEXT PT renewal:
+        min(30, days remaining in the member's plan from today).
+        Returns 0 if plan is expired or member is inactive.
+        """
+        from django.utils import timezone
+        today = timezone.localdate()
+        if obj.member.status != "active":
+            return 0
+        if not obj.member.renewal_date or obj.member.renewal_date <= today:
+            return 0
+        remaining = (obj.member.renewal_date - today).days
+        return min(30, remaining)
+
+    def get_pt_renewal_amount(self, obj):
+        """GST-inclusive prorated PT fee for the next renewal period."""
+        from apps.finances.gst_utils import get_gst_rate
+        pt_days = self.get_pt_renewal_days(obj)
+        if pt_days <= 0:
+            return 0.0
+        full_amt = obj.trainer.personal_trainer_amt
+        if not full_amt:
+            return 0.0
+        base = (Decimal(str(full_amt)) / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        rate = get_gst_rate()
+        gst  = (base * rate / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        return float(base + gst)
+
+    def get_can_renew_pt(self, obj):
+        """True when the member's plan is active and has days remaining."""
+        from django.utils import timezone
+        today = timezone.localdate()
+        if obj.member.status != "active":
+            return False
+        if not obj.member.renewal_date or obj.member.renewal_date <= today:
+            return False
+        return True
+
+    def get_pending_pt_renewal_trainer_amount(self, obj):
+        """Sum of trainer_payable_amount for all unpaid PTRenewal records on this assignment."""
+        from django.db.models import Sum
+        result = obj.pt_renewals.filter(trainer_paid=False).aggregate(
+            t=Sum("trainer_payable_amount")
+        )["t"]
+        return float(result or 0)
 
     def validate(self, data):
         if data.get("startingtime") and data.get("endingtime"):

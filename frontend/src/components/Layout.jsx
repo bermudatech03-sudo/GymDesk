@@ -37,6 +37,7 @@ const NAV = [
   { to:"/attendance",    icon:"✓",  label:"Attendance" },
   { to:"/equipment",     icon:"◇",  label:"Equipment" },
   { to:"/finances",      icon:"◎",  label:"Finances" },
+  { to:"/enquiries",     icon:"◑",  label:"Enquiries" },
   { to:"/notifications", icon:"⚇",  label:"Notifications" },
   { to:"/settings",      icon:"⚙",  label:"Settings" },
 ];

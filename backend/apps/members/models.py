@@ -252,16 +252,21 @@ class TrainerAssignment(models.Model):
     endingtime                 = models.TimeField()
     working_days               = models.CharField(max_length=20, default="0,1,2,3,4,5,6")
     trainer_fee_paid           = models.BooleanField(default=False)
+    # PT period tracking — updated on initial assignment and each renewal
+    pt_start_date              = models.DateField(null=True, blank=True)
+    pt_end_date                = models.DateField(null=True, blank=True)
+
     class Meta:
         unique_together = ["member", "trainer"]
         ordering = ["-assigned_at"]
+
     def __str__(self):
         return f"{self.member.name} assigned to {self.trainer.name} for {self.plan.name if self.plan else 'No Plan'} on {self.assigned_at.date()} from {self.startingtime} to {self.endingtime}"
-    
+
     def clean(self):
         if self.startingtime >= self.endingtime:
             raise ValidationError("Start time must be before end time")
-        
+
     @property
     def working_days_list(self):
         """Returns list of ints e.g. [0,1,2,3,4]"""
@@ -273,3 +278,43 @@ class TrainerAssignment(models.Model):
     def working_day_names(self):
         day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
         return [day_map[d] for d in self.working_days_list]
+
+
+class PTRenewal(models.Model):
+    """
+    One record per PT renewal transaction.
+    The initial PT period is covered by the enrollment MemberPayment.
+    Each subsequent PT renewal creates one PTRenewal record and one Income entry.
+    Amount is prorated: if < 30 days remain in the plan, only those days are charged.
+    """
+    STATUS = [("paid", "Paid"), ("partial", "Partial"), ("pending", "Pending")]
+    MODE_OF_PAYMENT = [
+        ("cash", "Cash"), ("card", "Card"), ("upi", "UPI"), ("other", "Other"),
+    ]
+
+    assignment             = models.ForeignKey(TrainerAssignment, on_delete=models.CASCADE, related_name="pt_renewals")
+    member                 = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="pt_renewals")
+    trainer                = models.ForeignKey('staff.StaffMember', on_delete=models.CASCADE, related_name="pt_renewals_as_trainer")
+    pt_start_date          = models.DateField()
+    pt_end_date            = models.DateField()
+    pt_days                = models.PositiveIntegerField()
+    base_amount            = models.DecimalField(max_digits=10, decimal_places=2)
+    gst_rate               = models.DecimalField(max_digits=5,  decimal_places=2, default=0)
+    gst_amount             = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount           = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_paid            = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    mode_of_payment        = models.CharField(max_length=10, choices=MODE_OF_PAYMENT, default="cash")
+    invoice_number         = models.CharField(max_length=80, blank=True)
+    status                 = models.CharField(max_length=10, choices=STATUS, default="pending")
+    paid_date              = models.DateField(default=timezone.localdate)
+    notes                  = models.TextField(blank=True)
+    created_at             = models.DateTimeField(auto_now_add=True)
+    # Trainer payout tracking for this renewal period
+    trainer_payable_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    trainer_paid           = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PT Renewal — {self.member.name} ({self.pt_start_date} → {self.pt_end_date})"

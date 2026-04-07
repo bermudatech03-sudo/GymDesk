@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'apps.finances',
     'apps.notifications',
     'django_apscheduler',
+    'apps.enquiries',
 ]
 
 MIDDLEWARE = [

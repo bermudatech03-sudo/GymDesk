@@ -12,6 +12,7 @@ const GYM_FIELDS = [
   { key: "GYM_GSTIN",          label: "GSTIN",                 type: "text" },
   { key: "GST_RATE",           label: "GST Rate (%)",          type: "number" },
   { key: "PT_PAYABLE_PERCENT", label: "PT Payable to Trainer (%)", type: "number" },
+  { key: "DIET_PLAN_AMOUNT",  label: "Diet Plan Amount (₹)",     type: "number" },
 ];
 
 export default function Settings() {
@@ -90,7 +91,7 @@ export default function Settings() {
                     className="form-input"
                     type={type}
                     min={type === "number" ? "0" : undefined}
-                    max={type === "number" && key !== "GST_RATE" ? "100" : undefined}
+                    max={key === "PT_PAYABLE_PERCENT" ? "100" : undefined}
                     value={gymSettings[key] ?? ""}
                     onChange={e => setGymSettings(p => ({ ...p, [key]: e.target.value }))}
                   />

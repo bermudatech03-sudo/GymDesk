@@ -266,11 +266,16 @@ function PTRenewalModal({ assignment, onClose, onSave }) {
                   marginLeft: 8, background: "var(--accent)", color: "#fff",
                   borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700,
                 }}>
-                  {preview.pt_days} days
+                  {preview.pt_days + (preview.current_pt_remaining || 0)} days
                 </span>
               </div>
+              {preview.current_pt_remaining > 0 && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent)" }}>
+                  +{preview.current_pt_remaining} bonus days carried over from current active period (paid for {preview.pt_days} days).
+                </div>
+              )}
               {preview.pt_days < 30 && (
-                <div style={{ marginTop: 6, fontSize: 11, color: "#e09020" }}>
+                <div style={{ marginTop: 4, fontSize: 11, color: "#e09020" }}>
                   Only {preview.pt_days} of 30 days available — prorated to match remaining plan duration.
                 </div>
               )}
@@ -333,7 +338,7 @@ function PTRenewalModal({ assignment, onClose, onSave }) {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
               <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? "Renewing…" : `Renew PT — ₹${fmt(preview.total_amount)}`}
+                {saving ? "Renewing…" : `Renew PT — ₹${fmt(parseFloat(amountPaid) || 0)}`}
               </button>
             </div>
           </form>
@@ -760,6 +765,87 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   );
 }
 
+/* ─── PT Balance Modal ─────────────────────────────────────────────────────── */
+function PTBalanceModal({ assignment, onClose, onSave }) {
+  const balance = assignment.pending_pt_balance || 0;
+  const [amountPaid, setAmountPaid] = useState(String(balance));
+  const [mode, setMode]             = useState("cash");
+  const [notes, setNotes]           = useState("");
+  const [saving, setSaving]         = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const amt = parseFloat(amountPaid || 0);
+    if (amt <= 0) { toast.error("Enter a valid amount."); return; }
+    setSaving(true);
+    try {
+      await api.post(`/members/assign-trainer/${assignment.id}/pay-pt-balance/`, {
+        amount_paid:     amt,
+        mode_of_payment: mode,
+        notes,
+      });
+      toast.success(`₹${fmt(amt)} PT balance recorded.`);
+      onSave();
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? "Payment failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">Pay PT Renewal Balance</div>
+        <div style={{ fontSize: 13, color: "var(--text2)", marginBottom: 16 }}>
+          Outstanding balance: <strong style={{ color: "#e05555" }}>₹{fmt(balance)}</strong>
+          {assignment.pending_pt_balance_invoice && (
+            <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+              ({assignment.pending_pt_balance_invoice})
+            </span>
+          )}
+        </div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Amount (₹)</label>
+              <input
+                className="form-input"
+                type="number"
+                min="0.01"
+                max={balance}
+                step="0.01"
+                value={amountPaid}
+                onChange={e => setAmountPaid(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Mode of Payment</label>
+              <select className="form-input" value={mode} onChange={e => setMode(e.target.value)}>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Notes (optional)</label>
+            <input className="form-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional note" />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : `Pay ₹${fmt(parseFloat(amountPaid) || 0)}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ─── PT Status badge helper ───────────────────────────────────────────────── */
 function PTStatusBadge({ assignment }) {
   const days = assignment.pt_days_remaining;
@@ -817,6 +903,7 @@ export default function TrainerAssignments() {
   const [loading, setLoading]           = useState(true);
   const [modal, setModal]               = useState(null);       // null | "new" | assignment obj
   const [ptRenewalModal, setPtRenewalModal] = useState(null);   // null | assignment obj
+  const [ptBalanceModal, setPtBalanceModal] = useState(null);   // null | assignment obj
   const [filterMember, setFilterMember] = useState("");
   const [filterTrainer, setFilterTrainer] = useState("");
   const [confirmState, setConfirmState] = useState(null);
@@ -1021,6 +1108,11 @@ export default function TrainerAssignments() {
                 const memberPaid = a.member_amount_paid || 0;
                 const memberCoveredPT = ptAmt > 0 && memberPaid >= ptAmt;
                 const canRenew   = a.can_renew_pt;
+                // Renewal: compare member-collected amount vs trainer payable (not total_amount)
+                const pendingRenewalTrainer = a.pending_pt_renewal_trainer_amount || 0;
+                const renewalMemberPaid     = a.pt_renewal_member_paid_amount || 0;
+                const renewalCoveredPT      = pendingRenewalTrainer > 0 && renewalMemberPaid >= pendingRenewalTrainer;
+                const ptBalance             = a.pending_pt_balance || 0;
 
                 return (
                   <tr key={a.id}>
@@ -1067,7 +1159,7 @@ export default function TrainerAssignments() {
                     <td style={{ minWidth: 140 }}>
                       <PTStatusBadge assignment={a} />
                       {/* Renew PT button */}
-                      <div style={{ marginTop: 6 }}>
+                      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
                         {canRenew ? (
                           <button
                             className="btn btn-sm btn-primary"
@@ -1083,11 +1175,27 @@ export default function TrainerAssignments() {
                             )}
                           </button>
                         ) : (
-                          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                            {a.member_status !== "active"
-                              ? "Plan inactive"
-                              : "Plan expired"}
+                          <span
+                            style={{ fontSize: 10, color: "var(--text-muted)", cursor: "help" }}
+                            title={a.pt_renewal_blocked_reason || ""}
+                          >
+                            {a.pt_end_date && a.member_plan_expiry && a.pt_end_date >= a.member_plan_expiry
+                              ? "PT covers plan expiry"
+                              : a.member_status !== "active"
+                                ? "Plan inactive"
+                                : "Plan expired"}
                           </span>
+                        )}
+                        {/* Pay PT Balance button when renewal is partial/pending */}
+                        {ptBalance > 0 && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ fontSize: 11, padding: "3px 10px", color: "#e09020", borderColor: "#e09020" }}
+                            onClick={() => setPtBalanceModal(a)}
+                            title={`Pay outstanding PT renewal balance ₹${fmt(ptBalance)}`}
+                          >
+                            Pay Balance ₹{fmt(ptBalance)}
+                          </button>
                         )}
                       </div>
                     </td>
@@ -1095,13 +1203,25 @@ export default function TrainerAssignments() {
                     {/* Member PT payment status */}
                     <td>
                       {ptAmt > 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          {/* Enrollment status */}
                           <span className={`badge ${memberCoveredPT ? "badge-green" : "badge-yellow"}`} style={{ fontSize: 11 }}>
-                            {memberCoveredPT ? "PT Fee Covered" : "PT Fee Pending"}
+                            {memberCoveredPT ? "Enroll Covered" : "Enroll Pending"}
                           </span>
                           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             ₹{memberPaid.toLocaleString("en-IN")} / ₹{ptAmt.toLocaleString("en-IN")}
                           </span>
+                          {/* Renewal status — compare collected vs trainer payable (not total) */}
+                          {pendingRenewalTrainer > 0 && (
+                            <>
+                              <span className={`badge ${renewalCoveredPT ? "badge-green" : "badge-yellow"}`} style={{ fontSize: 11, marginTop: 2 }}>
+                                {renewalCoveredPT ? "Renewal Covered" : "Renewal Pending"}
+                              </span>
+                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                ₹{renewalMemberPaid.toLocaleString("en-IN", { minimumFractionDigits: 2 })} / ₹{pendingRenewalTrainer.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </span>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
@@ -1128,23 +1248,24 @@ export default function TrainerAssignments() {
                         ) : null}
 
                         {/* ── PT renewal pending payout ── */}
-                        {(() => {
-                          const pending = a.pending_pt_renewal_trainer_amount || 0;
-                          if (pending <= 0) return null;
-                          return (
-                            <button
-                              className="btn btn-sm btn-primary"
-                              style={{ background: "var(--accent-2, #4da6ff)", borderColor: "var(--accent-2, #4da6ff)" }}
-                              onClick={() => handlePayPtTrainerFee(a)}
-                              title={`Pay accumulated PT renewal trainer fee to ${a.trainer_name}`}
-                            >
-                              Renewal ₹{pending.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </button>
-                          );
-                        })()}
+                        {pendingRenewalTrainer > 0 ? (
+                          <button
+                            className="btn btn-sm btn-primary"
+                            style={{ background: "var(--accent-2, #4da6ff)", borderColor: "var(--accent-2, #4da6ff)" }}
+                            disabled={!renewalCoveredPT}
+                            onClick={() => handlePayPtTrainerFee(a)}
+                            title={!renewalCoveredPT
+                              ? `Member hasn't paid enough for PT renewal yet (₹${renewalMemberPaid.toFixed(2)} / ₹${pendingRenewalTrainer.toFixed(2)})`
+                              : `Pay accumulated PT renewal trainer fee to ${a.trainer_name}`}
+                          >
+                            Renewal ₹{pendingRenewalTrainer.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </button>
+                        ) : a.has_paid_pt_renewals ? (
+                          <span className="badge badge-green" style={{ fontSize: 11 }}>Renewal Paid</span>
+                        ) : null}
 
                         {/* ── No PT configured ── */}
-                        {ptAmt === 0 && (a.pending_pt_renewal_trainer_amount || 0) === 0 && (
+                        {ptAmt === 0 && pendingRenewalTrainer === 0 && !a.has_paid_pt_renewals && (
                           <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
                         )}
                       </div>
@@ -1190,6 +1311,18 @@ export default function TrainerAssignments() {
           onClose={() => setPtRenewalModal(null)}
           onSave={() => {
             setPtRenewalModal(null);
+            load();
+          }}
+        />
+      )}
+
+      {/* PT Balance Modal */}
+      {ptBalanceModal && (
+        <PTBalanceModal
+          assignment={ptBalanceModal}
+          onClose={() => setPtBalanceModal(null)}
+          onSave={() => {
+            setPtBalanceModal(null);
             load();
           }}
         />

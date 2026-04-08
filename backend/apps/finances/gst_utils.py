@@ -19,6 +19,10 @@ def get_pt_payable_percent():
     return Decimal(get_setting("PT_PAYABLE_PERCENT", "100"))
 
 
+def get_diet_plan_amount():
+    return Decimal(get_setting("DIET_PLAN_AMOUNT", "0"))
+
+
 def calc_gst(base_price):
     """
     Given a base amount (excluding GST), return (base, gst_amount, total, rate).

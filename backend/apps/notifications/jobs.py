@@ -1,5 +1,6 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.utils import timezone
+from django.db.models import Q
 from django.db.models import Sum
 from apps.notifications.utils import send_notification, send_notification_admin, send_staff_notification
 from apps.members.models import Member, MemberAttendance
@@ -102,6 +103,77 @@ def send_staff_absent_notifications():
         if staff.id in checked_in_ids:
             continue
         send_staff_notification(staff, "staff_absent")
+
+
+def send_diet_notifications():
+    from apps.members.models import Diet, Member
+    from apps.notifications.models import Notification
+
+    now = timezone.localtime(timezone.now())
+    window_start = now.time().replace(second=0, microsecond=0)
+    window_end = (now + timedelta(minutes=5)).time().replace(second=0, microsecond=0)
+
+    # Handle window that crosses midnight (e.g. 23:58 → 00:03)
+    if window_start <= window_end:
+        items = Diet.objects.filter(
+            time__gte=window_start, time__lt=window_end
+        ).select_related("plan")
+    else:
+        items = Diet.objects.filter(
+            Q(time__gte=window_start) | Q(time__lt=window_end)
+        ).select_related("plan")
+
+    for item in items:
+        members = Member.objects.filter(status="active", diet=item.plan)
+        notes_part = f" Note: {item.notes}." if item.notes else ""
+        for member in members:
+            phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+            if not phone:
+                continue
+            if not phone.startswith("91"):
+                phone = f"91{phone}"
+            message = (
+                f"Hi {member.name}, diet reminder! "
+                f"Time to have {item.quantity}{item.unit} of *{item.food}* ({item.calories} cal)."
+                f"{notes_part} Stay consistent with your diet plan!"
+            )
+            Notification.objects.create(
+                recipient_name=member.name,
+                recipient_phone=phone,
+                channel="whatsapp",
+                trigger_type="diet_reminder",
+                message=message,
+                status="pending",
+            )
+
+
+def retry_failed_notifications():
+    import time
+    from apps.notifications.models import Notification
+    from apps.notifications.whatsapp import send_whatsapp_message
+
+    MAX_RETRIES = 3
+    BATCH_SIZE  = 50   # send max 50 retries per run to avoid overloading Meta API
+    failed = Notification.objects.filter(
+        status="failed", retry_count__lt=MAX_RETRIES
+    )[:BATCH_SIZE]
+    for notif in failed:
+        if not notif.recipient_phone:
+            continue
+        result = send_whatsapp_message(to=notif.recipient_phone, message=notif.message)
+        if result["success"]:
+            Notification.objects.filter(pk=notif.pk).update(
+                status="sent",
+                sent_at=timezone.now(),
+                retry_count=notif.retry_count + 1,
+                error_log="",
+            )
+        else:
+            Notification.objects.filter(pk=notif.pk).update(
+                retry_count=notif.retry_count + 1,
+                error_log=result.get("error", "Unknown error"),
+            )
+        time.sleep(0.1)   # 100ms between retries
 
 
 def send_enquiry_followups():

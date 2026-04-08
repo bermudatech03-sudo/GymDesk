@@ -1,12 +1,60 @@
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from .models import Notification
 from .whatsapp import send_whatsapp_message
+from .utils import TEMPLATES
 
 logger = logging.getLogger(__name__)
+
+# Max 10 concurrent WhatsApp HTTP calls at a time
+_executor = ThreadPoolExecutor(max_workers=10)
+
+
+@receiver(post_save, sender="members.MembershipPlan")
+def notify_members_on_new_plan(sender, instance, created, **kwargs):
+    """
+    Fires when a new MembershipPlan is saved for the first time.
+    Queues a WhatsApp notification to every active member.
+    """
+    if not created:
+        return
+    from apps.members.models import Member
+    from apps.enquiries.models import Enquiry
+    template = TEMPLATES["new_plan"]
+    description = f"{instance.description.strip()} " if instance.description.strip() else ""
+
+    recipients = []
+    for member in Member.objects.filter(status="active").only("name", "phone"):
+        recipients.append((member.name, member.phone))
+    for enquiry in Enquiry.objects.filter(status__in=("new", "followup")).only("name", "phone"):
+        recipients.append((enquiry.name, enquiry.phone))
+
+    for name, raw_phone in recipients:
+        phone = str(raw_phone or "").strip().replace(" ", "").replace("-", "")
+        if not phone:
+            continue
+        if not phone.startswith("91"):
+            phone = f"91{phone}"
+        body = template.format(
+            name=name,
+            plan_name=instance.name,
+            duration=instance.duration_days,
+            price=instance.price,
+            description=description,
+        )
+        Notification.objects.create(
+            recipient_name=name,
+            recipient_phone=phone,
+            channel="whatsapp",
+            trigger_type="new_plan",
+            message=body,
+            status="pending",
+        )
 
 
 @receiver(post_save, sender=Notification)
@@ -27,20 +75,25 @@ def dispatch_whatsapp_on_create(sender, instance, created, **kwargs):
         )
         return
 
-    result = send_whatsapp_message(
-        to=instance.recipient_phone,
-        message=instance.message,
-    )
+    pk      = instance.pk
+    phone   = instance.recipient_phone
+    message = instance.message
 
-    if result["success"]:
-        Notification.objects.filter(pk=instance.pk).update(
-            status="sent",
-            sent_at=timezone.now(),
-        )
-        logger.info(f"Notification {instance.pk} sent to {instance.recipient_phone}")
-    else:
-        Notification.objects.filter(pk=instance.pk).update(
-            status="failed",
-            error_log=result.get("error", "Unknown error"),
-        )
-        logger.error(f"Notification {instance.pk} failed: {result.get('error')}")
+    def _send():
+        # Small delay to avoid hammering Meta API when bulk-creating
+        time.sleep(0.1)
+        result = send_whatsapp_message(to=phone, message=message)
+        if result["success"]:
+            Notification.objects.filter(pk=pk).update(
+                status="sent",
+                sent_at=timezone.now(),
+            )
+            logger.info(f"Notification {pk} sent to {phone}")
+        else:
+            Notification.objects.filter(pk=pk).update(
+                status="failed",
+                error_log=result.get("error", "Unknown error"),
+            )
+            logger.error(f"Notification {pk} failed: {result.get('error')}")
+
+    _executor.submit(_send)

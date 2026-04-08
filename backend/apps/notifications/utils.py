@@ -16,6 +16,8 @@ TEMPLATES = {
     "daily_notice":         "Hi Admin,  You need to buy {itemName} and right now you have {moneyLeft} ruppes. You need to buy this {itemName} by {date}",
     "staff_absent_self":    "Hi {name}, you have not checked in for your shift on {date}. Please contact the gym management if you need to apply for leave.",
     "staff_absent_admin":   "Hi Admin, {staff_name} ({role}) has not checked in for their shift on {date}. Please follow up.",
+    "new_plan":             "Hi {name}, we just launched a new membership plan! *{plan_name}* — {duration} days for ₹{price}. {description}Visit us or call to enroll today!",
+    "diet_reminder":        "Hi {name}, diet reminder! Time to have {quantity}{unit} of *{food}* ({calories} cal).{notes} Stay consistent with your diet plan!",
 }
 
 

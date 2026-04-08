@@ -843,7 +843,7 @@ export default function Members() {
   const closeModal = () => { setModal(null); setSelected(null); };
   const afterSave = (data) => {
     const isNewEnroll = data && typeof data === "object" && "newMemberId" in data;
-    const isPending   = data && typeof data === "object" && data.isPending === true;
+    const isPending = data && typeof data === "object" && data.isPending === true;
 
     closeModal();
 
@@ -855,9 +855,9 @@ export default function Members() {
 
     load();
 
-    const billData    = isNewEnroll ? data.bill : data;
+    const billData = isNewEnroll ? data.bill : data;
     const newMemberId = isNewEnroll ? data.newMemberId : null;
-    const planType    = isNewEnroll ? data.planType : null;
+    const planType = isNewEnroll ? data.planType : null;
 
     if (newMemberId && (planType === "standard" || planType === "premium")) {
       navigate(`/trainer-assignments?newMember=${newMemberId}&from=members`);
@@ -1049,7 +1049,7 @@ export default function Members() {
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>ID</th><th>Member</th><th>Phone</th><th>Plan</th>
+                <th>ID</th><th>Member</th><th>Phone</th><th>Plan</th><th>Plan Type</th>
                 <th>Renewal</th><th>Days Left</th>
                 <th>Paid</th><th>Balance</th>
                 <th>Status</th><th>Actions</th>
@@ -1083,6 +1083,7 @@ export default function Members() {
                         </div>
                       )}
                     </td>
+                    <td style={{ color: "var(--text2)" }}>{m.plan_type}</td>
                     <td style={{
                       fontSize: 12,
                       color: (m.days_until_expiry ?? 99) <= 0 ? "var(--danger)"

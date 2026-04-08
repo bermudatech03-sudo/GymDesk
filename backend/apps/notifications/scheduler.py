@@ -4,7 +4,7 @@ from django_apscheduler.jobstores import DjangoJobStore
 def start():
     scheduler = BackgroundScheduler()
     scheduler.add_jobstore(DjangoJobStore(),"default")
-    from apps.notifications.jobs import send_renewal_reminders, send_expiry_notices, send_daily_notice, send_message_for_absentees, send_message_for_pt_absentees, send_staff_absent_notifications, send_enquiry_followups
+    from apps.notifications.jobs import send_renewal_reminders, send_expiry_notices, send_daily_notice, send_message_for_absentees, send_message_for_pt_absentees, send_staff_absent_notifications, send_diet_notifications, retry_failed_notifications, send_enquiry_followups
 
     scheduler.add_job(
         send_renewal_reminders,
@@ -57,6 +57,22 @@ def start():
         hour=10,
         minute=0,
         id="send_staff_absent_notifications",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        send_diet_notifications,
+        trigger="cron",
+        minute="*/5",
+        id="send_diet_notifications",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        retry_failed_notifications,
+        trigger="cron",
+        minute="*/30",
+        id="retry_failed_notifications",
         replace_existing=True,
     )
 

@@ -1,7 +1,7 @@
 import "./MemberBill.css";
 
 /* ── tiny helpers ─────────────────────────────────────── */
-const fmt  = (n) => Number(n || 0).toLocaleString("en-IN");
+const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
 const fmtF = (n) => parseFloat(n || 0);
 
 /** Group payments by invoice_number, preserving insertion order. */
@@ -134,20 +134,20 @@ function hStatusBadge(status) {
 }
 
 function hCycleCard(inv, rows, idx) {
-  const first      = rows[0];
-  const isRenewal  = inv.includes("-R");
-  const billed     = fmtF(first.total_with_gst || first.plan_price);
+  const first = rows[0];
+  const isRenewal = inv.includes("-R");
+  const billed = fmtF(first.total_with_gst || first.plan_price);
   const installments = first.cycle_installments || [];
 
   let totalPaid = 0;
-  let instRows  = "";
+  let instRows = "";
 
   if (installments.length > 0) {
     instRows = installments.map((inst, ri) => {
       totalPaid += fmtF(inst.amount);
       const typeLabel =
         inst.installment_type === "enrollment" ? "Enrollment" :
-        inst.installment_type === "renewal"    ? "Renewal"    : "Balance Payment";
+          inst.installment_type === "renewal" ? "Renewal" : "Balance Payment";
       const balColor = fmtF(inst.balance_after) > 0 ? "#cc5500" : "#777";
       return `<tr>
         <td>${inst.paid_date}</td>
@@ -162,7 +162,7 @@ function hCycleCard(inv, rows, idx) {
     }).join("");
   } else {
     totalPaid = fmtF(first.amount_paid);
-    instRows  = `<tr>
+    instRows = `<tr>
       <td>${first.paid_date}</td>
       <td style="color:#1a5a9a;font-weight:600">${isRenewal ? "Renewal" : "Enrollment"}</td>
       <td style="color:#1a7a00;font-weight:700">₹${fmt(first.amount_paid)}</td>
@@ -222,9 +222,9 @@ function hGrandSummary(grandBilled, grandPaid, outstanding) {
 export default function MemberBill({ bill, onClose }) {
   if (!bill) return null;
 
-  const isPaid      = fmtF(bill.balance) <= 0;
-  const hasGST      = fmtF(bill.gst_rate) > 0;
-  const isPartial   = !isPaid && fmtF(bill.amount_paid) > 0;
+  const isPaid = fmtF(bill.balance) <= 0;
+  const hasGST = fmtF(bill.gst_rate) > 0;
+  const isPartial = !isPaid && fmtF(bill.amount_paid) > 0;
   const isStatement = !!bill.isStatement;
 
   const cycles = bill.installments?.length
@@ -251,7 +251,7 @@ export default function MemberBill({ bill, onClose }) {
   /* ── HTML generator ──────────────────────────────── */
   const generateBillHTML = () => {
     const cyclesBlock = cycles.map(({ inv, rows }, i) => hCycleCard(inv, rows, i)).join("");
-    const grandBlock  = cycles.length > 0
+    const grandBlock = cycles.length > 0
       ? hGrandSummary(grandBilled, grandPaid, outstandingBal)
       : "";
 
@@ -290,9 +290,9 @@ export default function MemberBill({ bill, onClose }) {
 
     // ── Invoice mode ──
     const cycleInsts = bill.cycle_installments || [];
-    const isPaidH    = fmtF(bill.balance) <= 0;
+    const isPaidH = fmtF(bill.balance) <= 0;
     const isPartialH = !isPaidH && fmtF(bill.amount_paid) > 0;
-    const badge      = isPaidH
+    const badge = isPaidH
       ? `<span class="status-badge s-paid">✓ FULLY PAID</span>`
       : isPartialH
         ? `<span class="status-badge s-partial">⚠ PARTIAL PAYMENT</span>`
@@ -301,7 +301,7 @@ export default function MemberBill({ bill, onClose }) {
     const instRowsHTML = cycleInsts.map((inst, ri) => {
       const typeLabel =
         inst.installment_type === "enrollment" ? "Enrollment" :
-        inst.installment_type === "renewal"    ? "Renewal"    : "Balance Payment";
+          inst.installment_type === "renewal" ? "Renewal" : "Balance Payment";
       return `<tr>
         <td>${inst.paid_date}</td>
         <td style="color:#1a5a9a;font-weight:600">${typeLabel}</td>
@@ -352,7 +352,7 @@ export default function MemberBill({ bill, onClose }) {
     <div class="billing">
       <div class="section-label">Invoice Breakdown</div>
       <div class="b-row"><span class="lbl">Membership Fee (Base)</span><span class="val">₹${fmt(bill.plan_price)}</span></div>
-      ${hasGST ? `<div class="b-row gst"><span class="lbl">GST @ ${bill.gst_rate}% (CGST ${bill.gst_rate/2}% + SGST ${bill.gst_rate/2}%)</span><span class="val">₹${fmt(bill.gst_amount)}</span></div>` : ""}
+      ${hasGST ? `<div class="b-row gst"><span class="lbl">GST @ ${bill.gst_rate}% (CGST ${bill.gst_rate / 2}% + SGST ${bill.gst_rate / 2}%)</span><span class="val">₹${fmt(bill.gst_amount)}</span></div>` : ""}
       <div class="b-row total"><span class="lbl">Total Payable</span><span class="val">₹${fmt(bill.total_with_gst)}</span></div>
       <div class="b-row paid"><span class="lbl">Total Paid So Far</span><span class="val">₹${fmt(bill.amount_paid)}</span></div>
       ${fmtF(bill.balance) > 0 ? `<div class="b-row bal"><span class="lbl">Balance Remaining</span><span class="val">₹${fmt(bill.balance)}</span></div>` : ""}
@@ -377,9 +377,9 @@ export default function MemberBill({ bill, onClose }) {
   const handleDownload = () => {
     const html = generateBillHTML();
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
     a.download = isStatement
       ? `statement-${bill.member_id}-${bill.date}.html`
       : `${bill.invoice_number || "invoice"}.html`;
@@ -400,9 +400,9 @@ export default function MemberBill({ bill, onClose }) {
 
   /* ── Preview JSX: per-installment cycle block ──── */
   const CycleBlock = ({ inv, rows, idx }) => {
-    const isRen  = inv.includes("-R");
-    const first  = rows[0];
-    const insts  = first.cycle_installments || [];
+    const isRen = inv.includes("-R");
+    const first = rows[0];
+    const insts = first.cycle_installments || [];
     const billed = fmtF(first.total_with_gst || first.plan_price);
 
     const totPaid = insts.length > 0
@@ -414,46 +414,46 @@ export default function MemberBill({ bill, onClose }) {
       : fmtF(first.balance);
 
     return (
-      <div style={{ marginBottom:12, border:"1px solid var(--border)", borderRadius:8, overflow:"hidden" }}>
+      <div style={{ marginBottom: 12, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
         {/* cycle header */}
         <div style={{
-          background:"var(--surface2)", padding:"8px 14px",
-          display:"flex", justifyContent:"space-between", alignItems:"center",
-          borderBottom:"1px solid var(--border)", flexWrap:"wrap", gap:6
+          background: "var(--surface2)", padding: "8px 14px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          borderBottom: "1px solid var(--border)", flexWrap: "wrap", gap: 6
         }}>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{
-              fontSize:10, fontWeight:800, letterSpacing:.8, padding:"2px 8px", borderRadius:100,
+              fontSize: 10, fontWeight: 800, letterSpacing: .8, padding: "2px 8px", borderRadius: 100,
               background: isRen ? "rgba(77,240,255,.12)" : "rgba(168,255,87,.12)",
-              color:       isRen ? "var(--teal)"         : "var(--accent)",
-              border:      isRen ? "1px solid rgba(77,240,255,.3)" : "1px solid rgba(168,255,87,.3)"
+              color: isRen ? "var(--teal)" : "var(--accent)",
+              border: isRen ? "1px solid rgba(77,240,255,.3)" : "1px solid rgba(168,255,87,.3)"
             }}>
               {isRen ? "RENEWAL" : "ENROLLMENT"} #{idx + 1}
             </span>
-            <span style={{fontFamily:"var(--font-mono)",fontSize:11,color:"var(--text3)"}}>{inv}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text3)" }}>{inv}</span>
           </div>
-          <span style={{fontSize:11,color:"var(--text2)"}}>
+          <span style={{ fontSize: 11, color: "var(--text2)" }}>
             {first.plan_name || "—"} &nbsp;·&nbsp; {first.valid_from || "—"} → {first.valid_to || "—"}
           </span>
         </div>
 
         {/* GST info bar */}
         <div style={{
-          background:"var(--surface)", padding:"6px 14px",
-          borderBottom:"1px solid var(--border)", fontSize:11, color:"var(--text3)"
+          background: "var(--surface)", padding: "6px 14px",
+          borderBottom: "1px solid var(--border)", fontSize: 11, color: "var(--text3)"
         }}>
-          Billed: <strong style={{color:"var(--text1)"}}>₹{fmt(billed)}</strong>
+          Billed: <strong style={{ color: "var(--text1)" }}>₹{fmt(billed)}</strong>
           &ensp;|&ensp; Base: <strong>₹{fmt(first.plan_price)}</strong>
-          &ensp;+&ensp; GST {first.gst_rate || 0}%: <strong style={{color:"var(--warn)"}}>₹{fmt(first.gst_amount || 0)}</strong>
+          &ensp;+&ensp; GST {first.gst_rate || 0}%: <strong style={{ color: "var(--warn)" }}>₹{fmt(first.gst_amount || 0)}</strong>
         </div>
 
         {/* installment rows */}
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
-            <tr style={{background:"var(--surface)"}}>
-              {["Date","Type","Amount Paid","Balance After","Mode"].map((h,i) => (
+            <tr style={{ background: "var(--surface)" }}>
+              {["Date", "Type", "Amount Paid", "Balance After", "Mode"].map((h, i) => (
                 <th key={h} style={{
-                  padding:"5px 10px", fontWeight:700, color:"var(--text3)", fontSize:11,
+                  padding: "5px 10px", fontWeight: 700, color: "var(--text3)", fontSize: 11,
                   textAlign: i >= 2 ? "center" : "left"
                 }}>{h}</th>
               ))}
@@ -463,37 +463,41 @@ export default function MemberBill({ bill, onClose }) {
             {insts.length > 0 ? insts.map((inst, ri) => {
               const typeLabel =
                 inst.installment_type === "enrollment" ? "Enrollment" :
-                inst.installment_type === "renewal"    ? "Renewal"    : "Balance Payment";
+                  inst.installment_type === "renewal" ? "Renewal" : "Balance Payment";
               return (
-                <tr key={inst.id || ri} style={{borderTop:"1px solid var(--border)"}}>
-                  <td style={{padding:"6px 10px",color:"var(--text2)"}}>{inst.paid_date}</td>
-                  <td style={{padding:"6px 10px",color:"var(--info)",fontWeight:600,fontSize:11}}>{typeLabel}</td>
-                  <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",color:"var(--accent)",fontWeight:700}}>
+                <tr key={inst.id || ri} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 10px", color: "var(--text2)" }}>{inst.paid_date}</td>
+                  <td style={{ padding: "6px 10px", color: "var(--info)", fontWeight: 600, fontSize: 11 }}>{typeLabel}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--accent)", fontWeight: 700 }}>
                     ₹{fmt(inst.amount)}
                   </td>
-                  <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",
-                    color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--text3)"}}>
+                  <td style={{
+                    padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)",
+                    color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--text3)"
+                  }}>
                     ₹{fmt(inst.balance_after)}
                   </td>
-                  <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                  <td style={{ padding: "6px 10px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase" }}>
                     {(inst.mode_of_payment || "cash").toUpperCase()}
                   </td>
                 </tr>
               );
             }) : rows.map(r => (
-              <tr key={r.id} style={{borderTop:"1px solid var(--border)"}}>
-                <td style={{padding:"6px 10px",color:"var(--text2)"}}>{r.paid_date}</td>
-                <td style={{padding:"6px 10px",color:"var(--info)",fontWeight:600,fontSize:11}}>
+              <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
+                <td style={{ padding: "6px 10px", color: "var(--text2)" }}>{r.paid_date}</td>
+                <td style={{ padding: "6px 10px", color: "var(--info)", fontWeight: 600, fontSize: 11 }}>
                   {isRen ? "Renewal" : "Enrollment"}
                 </td>
-                <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",color:"var(--accent)",fontWeight:700}}>
+                <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--accent)", fontWeight: 700 }}>
                   ₹{fmt(r.amount_paid)}
                 </td>
-                <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",
-                  color: fmtF(r.balance) > 0 ? "var(--warn)" : "var(--text3)"}}>
+                <td style={{
+                  padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)",
+                  color: fmtF(r.balance) > 0 ? "var(--warn)" : "var(--text3)"
+                }}>
                   ₹{fmt(r.balance)}
                 </td>
-                <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                <td style={{ padding: "6px 10px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase" }}>
                   {(r.mode_of_payment || "CASH")}
                 </td>
               </tr>
@@ -503,15 +507,15 @@ export default function MemberBill({ bill, onClose }) {
 
         {/* cycle subtotal */}
         <div style={{
-          background:"var(--surface2)", padding:"6px 12px",
-          display:"flex", justifyContent:"space-between",
-          borderTop:"1px solid var(--border)", fontSize:12
+          background: "var(--surface2)", padding: "6px 12px",
+          display: "flex", justifyContent: "space-between",
+          borderTop: "1px solid var(--border)", fontSize: 12
         }}>
-          <span style={{color:"var(--text3)"}}>
-            Billed <strong style={{color:"var(--text1)"}}>₹{fmt(billed)}</strong>
-            &ensp; Total Paid <strong style={{color:"var(--accent)"}}>₹{fmt(totPaid)}</strong>
+          <span style={{ color: "var(--text3)" }}>
+            Billed <strong style={{ color: "var(--text1)" }}>₹{fmt(billed)}</strong>
+            &ensp; Total Paid <strong style={{ color: "var(--accent)" }}>₹{fmt(totPaid)}</strong>
           </span>
-          <strong style={{color: lastBal > 0 ? "var(--warn)" : "var(--teal)"}}>
+          <strong style={{ color: lastBal > 0 ? "var(--warn)" : "var(--teal)" }}>
             Balance: ₹{fmt(lastBal)}
           </strong>
         </div>
@@ -531,12 +535,12 @@ export default function MemberBill({ bill, onClose }) {
       >
         {/* action bar */}
         <div className="bill-actions">
-          <div style={{fontFamily:"var(--font-display)",fontSize:14,fontWeight:700}}>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 700 }}>
             {isStatement ? `📋 Statement — ${bill.member_name}` : `🧾 Invoice — ${bill.invoice_number}`}
           </div>
-          <div style={{display:"flex",gap:8}}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-sm btn-secondary" onClick={handlePrint}>🖨 Print</button>
-            <button className="btn btn-sm btn-primary"   onClick={handleDownload}>⬇ Download</button>
+            <button className="btn btn-sm btn-primary" onClick={handleDownload}>⬇ Download</button>
             <button className="btn btn-sm btn-secondary" onClick={onClose}>✕ Close</button>
           </div>
         </div>
@@ -561,11 +565,10 @@ export default function MemberBill({ bill, onClose }) {
               </div>
               <div className="bill-inv-date">Date: {bill.date}</div>
             </div>
-            <span className={`badge ${
-              isStatement
-                ? (outstandingBal > 0 ? "badge-yellow" : "badge-green")
-                : (isPaid ? "badge-green" : isPartial ? "badge-yellow" : "badge-red")
-            }`} style={{fontSize:11}}>
+            <span className={`badge ${isStatement
+              ? (outstandingBal > 0 ? "badge-yellow" : "badge-green")
+              : (isPaid ? "badge-green" : isPartial ? "badge-yellow" : "badge-red")
+              }`} style={{ fontSize: 11 }}>
               {isStatement
                 ? (outstandingBal > 0 ? "⚠ BALANCE DUE" : "✓ FULLY CLEAR")
                 : (isPaid ? "✓ FULLY PAID" : isPartial ? "⚠ PARTIAL" : "⏳ PENDING")}
@@ -589,6 +592,7 @@ export default function MemberBill({ bill, onClose }) {
                 <div className="bill-plan-box">
                   <div className="bill-section-label">Plan</div>
                   <div className="bill-plan-name">{bill.plan_name}</div>
+                  <div className="bill-plan-name"> {bill.plan_type} </div>
                   <div className="bill-plan-validity">
                     {bill.plan_duration} days &nbsp;·&nbsp;
                     {bill.valid_from} → {bill.valid_to}
@@ -605,7 +609,7 @@ export default function MemberBill({ bill, onClose }) {
                 {hasGST && (
                   <div className="bill-line bill-line--gst">
                     <span>GST @ {bill.gst_rate}%
-                      <small> (CGST {bill.gst_rate/2}% + SGST {bill.gst_rate/2}%)</small>
+                      <small> (CGST {bill.gst_rate / 2}% + SGST {bill.gst_rate / 2}%)</small>
                     </span>
                     <span>₹{fmt(bill.gst_amount)}</span>
                   </div>
@@ -627,18 +631,18 @@ export default function MemberBill({ bill, onClose }) {
               </div>
 
               {cycleInsts.length > 0 && (
-                <div style={{paddingBottom:8}}>
-                  <div className="bill-section-label" style={{marginBottom:8}}>
+                <div style={{ paddingBottom: 8 }}>
+                  <div className="bill-section-label" style={{ marginBottom: 8 }}>
                     Payment Installments — This Invoice
                   </div>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
-                      <tr style={{background:"var(--surface)"}}>
-                        {["Date","Type","Amount Paid","Balance After","Mode"].map((h,i) => (
+                      <tr style={{ background: "var(--surface)" }}>
+                        {["Date", "Type", "Amount Paid", "Balance After", "Mode"].map((h, i) => (
                           <th key={h} style={{
-                            padding:"5px 10px", fontWeight:700, color:"var(--text3)", fontSize:11,
+                            padding: "5px 10px", fontWeight: 700, color: "var(--text3)", fontSize: 11,
                             textAlign: i >= 2 ? "center" : "left",
-                            borderBottom:"1px solid var(--border)"
+                            borderBottom: "1px solid var(--border)"
                           }}>{h}</th>
                         ))}
                       </tr>
@@ -647,21 +651,23 @@ export default function MemberBill({ bill, onClose }) {
                       {cycleInsts.map((inst, ri) => {
                         const typeLabel =
                           inst.installment_type === "enrollment" ? "Enrollment" :
-                          inst.installment_type === "renewal"    ? "Renewal"    : "Balance Payment";
+                            inst.installment_type === "renewal" ? "Renewal" : "Balance Payment";
                         return (
-                          <tr key={inst.id || ri} style={{borderTop:"1px solid var(--border)"}}>
-                            <td style={{padding:"6px 10px",color:"var(--text2)"}}>{inst.paid_date}</td>
-                            <td style={{padding:"6px 10px",color:"var(--info)",fontWeight:600,fontSize:11}}>
+                          <tr key={inst.id || ri} style={{ borderTop: "1px solid var(--border)" }}>
+                            <td style={{ padding: "6px 10px", color: "var(--text2)" }}>{inst.paid_date}</td>
+                            <td style={{ padding: "6px 10px", color: "var(--info)", fontWeight: 600, fontSize: 11 }}>
                               {typeLabel}
                             </td>
-                            <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",color:"var(--accent)",fontWeight:700}}>
+                            <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--accent)", fontWeight: 700 }}>
                               ₹{fmt(inst.amount)}
                             </td>
-                            <td style={{padding:"6px 10px",textAlign:"right",fontFamily:"var(--font-mono)",
-                              color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--teal)"}}>
+                            <td style={{
+                              padding: "6px 10px", textAlign: "right", fontFamily: "var(--font-mono)",
+                              color: fmtF(inst.balance_after) > 0 ? "var(--warn)" : "var(--teal)"
+                            }}>
                               ₹{fmt(inst.balance_after)}
                             </td>
-                            <td style={{padding:"6px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:"var(--text2)",textTransform:"uppercase"}}>
+                            <td style={{ padding: "6px 10px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase" }}>
                               {(inst.mode_of_payment || "cash").toUpperCase()}
                             </td>
                           </tr>
@@ -683,34 +689,34 @@ export default function MemberBill({ bill, onClose }) {
 
           {/* ── All cycles history ── */}
           {cycles.length > 0 && (
-            <div style={{paddingBottom:8}}>
-              <div style={{padding:"12px 16px 6px"}}>
+            <div style={{ paddingBottom: 8 }}>
+              <div style={{ padding: "12px 16px 6px" }}>
                 <div className="bill-section-label">
                   {isStatement ? "Payment History — All Cycles" : "Full Payment History"}
                 </div>
               </div>
-              <div style={{padding:"0 16px"}}>
+              <div style={{ padding: "0 16px" }}>
                 {cycles.map(({ inv, rows }, idx) => (
                   <CycleBlock key={inv} inv={inv} rows={rows} idx={idx} />
                 ))}
 
                 {/* grand summary */}
                 <div style={{
-                  background:"var(--surface2)", border:"1px solid var(--border)",
-                  borderRadius:8, padding:"14px 16px", marginBottom:16
+                  background: "var(--surface2)", border: "1px solid var(--border)",
+                  borderRadius: 8, padding: "14px 16px", marginBottom: 16
                 }}>
-                  <div className="bill-section-label" style={{marginBottom:10}}>Grand Summary</div>
+                  <div className="bill-section-label" style={{ marginBottom: 10 }}>Grand Summary</div>
                   {[
-                    { label:"Total Billed (incl. GST)", val:`₹${fmt(grandBilled)}`,   color:"var(--text1)"  },
-                    { label:"Total Paid",               val:`₹${fmt(grandPaid)}`,      color:"var(--accent)" },
-                    { label:"Outstanding Balance",      val:`₹${fmt(outstandingBal)}`, color: outstandingBal > 0 ? "var(--warn)" : "var(--teal)" },
+                    { label: "Total Billed (incl. GST)", val: `₹${fmt(grandBilled)}`, color: "var(--text1)" },
+                    { label: "Total Paid", val: `₹${fmt(grandPaid)}`, color: "var(--accent)" },
+                    { label: "Outstanding Balance", val: `₹${fmt(outstandingBal)}`, color: outstandingBal > 0 ? "var(--warn)" : "var(--teal)" },
                   ].map(row => (
                     <div key={row.label} style={{
-                      display:"flex", justifyContent:"space-between",
-                      padding:"7px 0", borderBottom:"1px solid var(--border)", fontSize:13
+                      display: "flex", justifyContent: "space-between",
+                      padding: "7px 0", borderBottom: "1px solid var(--border)", fontSize: 13
                     }}>
-                      <span style={{color:"var(--text2)"}}>{row.label}</span>
-                      <span style={{fontFamily:"var(--font-mono)",fontWeight:700,color:row.color}}>
+                      <span style={{ color: "var(--text2)" }}>{row.label}</span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: row.color }}>
                         {row.val}
                       </span>
                     </div>
@@ -721,7 +727,7 @@ export default function MemberBill({ bill, onClose }) {
           )}
 
           <div className="bill-footer-text">
-            Thank you for choosing {bill.gym_name}!<br/>
+            Thank you for choosing {bill.gym_name}!<br />
             Computer-generated {isStatement ? "statement" : "tax invoice"}. No signature required.
           </div>
         </div>

@@ -12,6 +12,10 @@ class Notification(models.Model):
         ("manual",           "Manual"),
         ("enquiry_welcome",  "Enquiry Welcome"),
         ("enquiry_followup", "Enquiry Follow-up"),
+        ("absent",           "Member Absent"),
+        ("staff_absent",     "Staff Absent"),
+        ("new_plan",         "New Plan Announcement"),
+        ("diet_reminder",    "Diet Reminder"),
     ]
 
     recipient_name  = models.CharField(max_length=150)
@@ -22,6 +26,7 @@ class Notification(models.Model):
     status          = models.CharField(max_length=10, choices=STATUS, default="pending")
     sent_at         = models.DateTimeField(null=True, blank=True)
     error_log       = models.TextField(blank=True)
+    retry_count     = models.PositiveSmallIntegerField(default=0)
     created_at      = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -170,6 +170,9 @@ class DietPlan(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     foodType = models.CharField(max_length=10, choices=FOODTYPE, default="veg")
 
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
         return self.name
 

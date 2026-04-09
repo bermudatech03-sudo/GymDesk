@@ -8,8 +8,9 @@ class NotificationsConfig(AppConfig):
     name = "apps.notifications"
 
     def ready(self):
+        import apps.notifications.signals
         if 'runserver' in sys.argv and os.environ.get('RUN_MAIN') == 'true':
-            import apps.notifications.signals
+            
             from apps.notifications.scheduler import start
             start()
         

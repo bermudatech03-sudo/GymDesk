@@ -140,3 +140,15 @@ META_WHATSAPP_ACCESS_TOKEN    = config("META_WHATSAPP_ACCESS_TOKEN", default="")
 META_WHATSAPP_PHONE_NUMBER_ID = config("META_WHATSAPP_PHONE_NUMBER_ID", default="")
 ADMIN_WHATSAPP_NUMBER = config("ADMIN_WHATSAPP_NUMBER", default="")
 
+
+LOGGING = {
+    "version":1,
+    "disable_existing_loggers":False,
+    "handlers":{
+        "console":{"class":"logging.StreamHandler"},
+    },
+    "root":{
+        "handlers":["console"],
+        "level":"INFO"
+    }
+}

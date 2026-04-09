@@ -12,10 +12,10 @@ from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, 
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
     InstallmentPaymentSerializer, TrainerAssignmentSerializer, PTRenewalSerializer)
 from apps.notifications.utils import send_notification
-
+import logging
 
 from apps.finances.gst_utils import get_gst_rate as _get_gst_rate, get_gym_info as _gym_info
-
+logger = logging.getLogger(__name__)
 def _gst_rate():
     return _get_gst_rate()
 
@@ -301,7 +301,7 @@ class MemberViewSet(viewsets.ModelViewSet):
             bill_data = _build_bill(member, payment, _gym_info())
 
         try: send_notification(member, "enrollment")
-        except: pass
+        except Exception as e: logger.error(f"failed to send enrollment notification{e}")
 
         return Response({
             **MemberSerializer(member).data,

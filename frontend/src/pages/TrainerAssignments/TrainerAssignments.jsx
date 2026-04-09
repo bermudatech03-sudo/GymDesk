@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../api/axios";
 import toast from "react-hot-toast";
 import ConfirmModal from "../../components/ConfirmModal";
+import MemberBill from "../../components/MemberBill";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -178,7 +179,8 @@ function PTRenewalModal({ assignment, onClose, onSave }) {
       const billData = res.data.bill;
       setBill(billData);
       toast.success(`PT renewed for ${preview.pt_days} days!`);
-      onSave();
+      // NOTE: don't call onSave() here — it would close the modal and hide the
+      // bill-download success state. onSave() runs when the user clicks Close.
     } catch (err) {
       const d = err.response?.data;
       toast.error(d?.detail ?? "PT renewal failed.");
@@ -235,7 +237,7 @@ function PTRenewalModal({ assignment, onClose, onSave }) {
             </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="btn btn-ghost" onClick={onClose}>Close</button>
+              <button className="btn btn-ghost" onClick={onSave}>Close</button>
               <button className="btn btn-primary" onClick={() => downloadPtBill(bill)}>
                 Download PT Bill
               </button>
@@ -387,7 +389,18 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   const [saving, setSaving]                   = useState(false);
   const [ptAmountToCollect, setPtAmountToCollect] = useState("");
   const [modeOfPayment, setModeOfPayment]     = useState("cash");
+  const [assignBill, setAssignBill]           = useState(null);
+  const [dietBaseAmt, setDietBaseAmt]         = useState(0);
+  const [gymGstRate, setGymGstRate]           = useState(18);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    api.get("/finances/gym-settings/").then(r => {
+      const s = r.data || {};
+      if (s.DIET_PLAN_AMOUNT != null) setDietBaseAmt(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
+      if (s.GST_RATE != null) setGymGstRate(parseFloat(s.GST_RATE) || 18);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (newMemberId && !isEdit) {
@@ -409,14 +422,32 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   const memberPlan        = plans.find(p => String(p.id) === String(memberPlanId));
   const planWithGst       = parseFloat(memberPlan?.price_with_gst ?? memberPlan?.price ?? 0);
   const ptFee             = parseFloat(selectedTrainer?.personal_trainer_amt ?? 0);
-  const ptFeeGst          = parseFloat((ptFee * 0.18).toFixed(2));
+  const ptFeeGst          = parseFloat((ptFee * gymGstRate / 100).toFixed(2));
   const ptFeeWithGst      = ptFee + ptFeeGst;
-  const grandTotal        = planWithGst + ptFeeWithGst;
+
+  // Determine if the member being assigned has a diet plan
+  const memberHasDiet = pendingMember
+    ? Boolean(pendingMember.diet)
+    : Boolean(selectedMemberObj?.diet_id);
+  const dietWithGst = memberHasDiet
+    ? parseFloat((dietBaseAmt * (1 + gymGstRate / 100)).toFixed(2))
+    : 0;
+
+  // For new enrollment (pendingMember): diet was already collected with plan fee at enrollment.
+  //   → collect PT fee only at this step.
+  // For existing member upgrade (basic→premium via newMemberId): plan already paid.
+  //   → collect PT + diet at this step.
+  const feesToCollect = pendingMember
+    ? ptFeeWithGst
+    : ptFeeWithGst + dietWithGst;
+
+  // Grand total shown for information: plan + PT + diet (full picture)
+  const grandTotal = planWithGst + ptFeeWithGst + dietWithGst;
 
   useEffect(() => {
-    if (ptFeeWithGst > 0) setPtAmountToCollect(ptFeeWithGst);
+    if (feesToCollect > 0) setPtAmountToCollect(feesToCollect.toFixed(2));
     else setPtAmountToCollect("");
-  }, [form.trainer, ptFeeWithGst]);
+  }, [form.trainer, feesToCollect]);
 
   const toggleDay = (idx) => {
     set("working_days",
@@ -474,7 +505,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         const enrollAmt  = parseFloat(pendingMember.amount_paid || 0);
         const combined   = enrollAmt + collectAmt;
 
-        await api.post("/members/assign-trainer/", {
+        const aRes = await api.post("/members/assign-trainer/", {
           member:          createdMemberId,
           trainer:         Number(form.trainer),
           plan:            form.plan ? Number(form.plan) : null,
@@ -492,10 +523,14 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
             : "Member enrolled & trainer assigned!"
         );
         sessionStorage.removeItem("pendingMember");
+        if (aRes.data?.bill) {
+          setAssignBill(aRes.data.bill);
+          return;
+        }
         onSave();
       } else {
         // Existing member flow
-        await api.post("/members/assign-trainer/", {
+        const aRes = await api.post("/members/assign-trainer/", {
           member:       Number(form.member),
           trainer:      Number(form.trainer),
           plan:         form.plan ? Number(form.plan) : null,
@@ -520,6 +555,28 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
         } else {
           toast.success("Trainer assigned!");
         }
+        if (aRes.data?.bill) {
+          const raw = aRes.data.bill;
+          // Recompute totals to show only the additional fees (PT + diet)
+          const ptBase   = parseFloat(raw.pt_fee || 0);
+          const dietBase = parseFloat(raw.diet_plan_amount || 0);
+          const addBase  = ptBase + dietBase;
+          const gstAmt   = parseFloat((addBase * raw.gst_rate / 100).toFixed(2));
+          const addTotal = parseFloat((addBase + gstAmt).toFixed(2));
+          const paid     = Math.min(collectAmt, addTotal);
+          const bal      = parseFloat(Math.max(0, addTotal - paid).toFixed(2));
+          setAssignBill({
+            ...raw,
+            is_pt_upgrade:   true,
+            membership_fee:  0,
+            plan_price:      addBase,
+            gst_amount:      gstAmt,
+            total_with_gst:  addTotal,
+            amount_paid:     paid,
+            balance:         bal,
+          });
+          return;
+        }
         onSave();
       }
     } catch (err) {
@@ -529,6 +586,10 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
       setSaving(false);
     }
   };
+
+  if (assignBill) {
+    return <MemberBill bill={assignBill} onClose={() => { setAssignBill(null); onSave(); }} />;
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -704,7 +765,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                     <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFee)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
-                    <span>GST on PT Fee (18%)</span>
+                    <span>GST on PT Fee ({gymGstRate}%)</span>
                     <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFeeGst)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
@@ -713,12 +774,18 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                   </div>
                 </>
               )}
+              {dietWithGst > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)", marginBottom: 4 }}>
+                  <span>Diet Plan (incl. GST)</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(dietWithGst)}</span>
+                </div>
+              )}
               <div style={{
                 display: "flex", justifyContent: "space-between",
                 fontWeight: 700, color: "var(--accent)",
                 borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 4,
               }}>
-                <span>Total</span>
+                <span>Grand Total</span>
                 <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(grandTotal)}</span>
               </div>
               {ptFee === 0 && (
@@ -727,13 +794,20 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                 </div>
               )}
 
-              {!isEdit && ptFeeWithGst > 0 && (
+              {!isEdit && feesToCollect > 0 && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--text1)" }}>Collect PT Fee Now</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--text1)" }}>
+                    Collect PT{dietWithGst > 0 ? " + Diet" : ""} Fee Now
+                  </div>
+                  {dietWithGst > 0 && (
+                    <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 8 }}>
+                      PT ₹{fmtD(ptFeeWithGst)} + Diet ₹{fmtD(dietWithGst)} = ₹{fmtD(feesToCollect)}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 11, color: "var(--text3)", display: "block", marginBottom: 4 }}>Amount (₹)</label>
-                      <input className="form-input" type="number" min="0" max={ptFeeWithGst}
+                      <input className="form-input" type="number" min="0" max={feesToCollect}
                         value={ptAmountToCollect} onChange={e => setPtAmountToCollect(e.target.value)}
                         placeholder="0 to collect later" />
                     </div>

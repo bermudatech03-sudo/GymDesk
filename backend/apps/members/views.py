@@ -128,6 +128,10 @@ def _build_bill(member, payment, gym):
         })
 
     diet_amt = float(payment.diet_plan_amount)
+    plan_base_price = float(payment.plan.price) if payment.plan else 0.0
+    # plan_price = plan.price + pt_fee + diet; derive pt_fee from the difference
+    derived_pt_fee = max(0.0, float(payment.plan_price) - plan_base_price - diet_amt)
+    membership_fee = plan_base_price if payment.plan else float(payment.plan_price) - diet_amt - derived_pt_fee
     return {
         "invoice_number":    payment.invoice_number,
         "member_id":         member.display_id(),
@@ -136,9 +140,10 @@ def _build_bill(member, payment, gym):
         "email":             member.email,
         "plan_name":         payment.plan.name if payment.plan else "",
         "plan_duration":     payment.plan.duration_days if payment.plan else 0,
-        # plan_price is the combined base (membership + diet); show membership part separately
+        # plan_price is the combined base (membership + PT + diet); show each separately
         "plan_price":        float(payment.plan_price),
-        "membership_fee":    float(payment.plan_price) - diet_amt,
+        "membership_fee":    membership_fee,
+        "pt_fee":            derived_pt_fee,
         "diet_plan_amount":  diet_amt,
         "gst_rate":          float(payment.gst_rate),
         "gst_amount":        float(payment.gst_amount),
@@ -320,6 +325,12 @@ class MemberViewSet(viewsets.ModelViewSet):
         old_renewal = member.renewal_date
         amount_paid = Decimal(str(s.validated_data["amount_paid"]))
 
+        # Allow caller to set/change/remove diet on renewal
+        if "diet_id" in request.data:
+            new_diet_id = request.data.get("diet_id") or None
+            member.diet = DietPlan.objects.filter(pk=new_diet_id).first() if new_diet_id else None
+            member.save()
+
         member.renew()
 
         from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
@@ -391,6 +402,64 @@ class MemberViewSet(viewsets.ModelViewSet):
         bill_data = _build_bill(member, payment, _gym_info())
         return Response({
             **MemberPaymentSerializer(payment).data,
+            "bill": bill_data,
+        })
+
+    @action(detail=True, methods=["post"], url_path="upgrade-diet")
+    def upgrade_diet(self, request, pk=None):
+        """
+        Called when a standard member is upgraded to premium (diet only added).
+        Updates latest payment to include diet fee, records installment if amount_paid > 0.
+        Does NOT create a new TrainerAssignment — use this instead of assign-trainer for
+        standard→premium upgrades where PT was already assigned.
+        """
+        from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+        member = self.get_object()
+
+        if not member.diet:
+            return Response({"detail": "Assign a diet plan to the member first."}, status=400)
+
+        latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
+        if not latest_payment:
+            return Response({"detail": "No payment record found for this member."}, status=400)
+
+        diet_amt = _get_diet_amt()
+        if diet_amt <= 0:
+            return Response({"detail": "Diet plan amount is not configured in settings."}, status=400)
+
+        if latest_payment.diet_plan_amount >= diet_amt:
+            return Response({"detail": "Diet plan fee already included in this payment cycle."}, status=400)
+
+        # Re-derive existing PT fee from plan_price = plan.base + PT + previous_diet
+        plan_base_price = latest_payment.plan.price if latest_payment.plan else Decimal("0")
+        existing_pt_fee = max(
+            Decimal("0"),
+            latest_payment.plan_price - plan_base_price - latest_payment.diet_plan_amount
+        )
+
+        base, gst_amt, total, rate = _calc_gst(plan_base_price + existing_pt_fee + diet_amt)
+        latest_payment.plan_price       = base
+        latest_payment.diet_plan_amount = diet_amt
+        latest_payment.gst_rate         = rate
+        latest_payment.gst_amount       = gst_amt
+        latest_payment.total_with_gst   = total
+        latest_payment.save()
+
+        amount_paid = Decimal(str(request.data.get("amount_paid", 0)))
+        if amount_paid > 0:
+            installment = _create_installment(
+                latest_payment, member, amount_paid, "balance",
+                notes=request.data.get("notes", ""),
+                mode_of_payment=request.data.get("mode_of_payment", "cash"),
+            )
+            _record_income_for_installment(member, latest_payment, installment)
+
+        latest_payment.refresh_from_db()
+        bill_data = _build_bill(member, latest_payment, _gym_info())
+        bill_data["is_diet_upgrade"] = True   # hint for frontend to show only diet row
+
+        return Response({
+            **MemberPaymentSerializer(latest_payment).data,
             "bill": bill_data,
         })
 
@@ -711,29 +780,42 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
 
         assignment.save()
 
-        # Update the member's latest payment to include the trainer's PT fee
-        if trainer.personal_trainer_amt:
-            latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
-            if latest_payment and latest_payment.plan:
-                base, gst_amt, total, rate = _calc_gst(
-                    latest_payment.plan.price
-                    + trainer.personal_trainer_amt
-                    + latest_payment.diet_plan_amount
-                )
-                latest_payment.plan_price     = base
-                latest_payment.gst_amount     = gst_amt
-                latest_payment.total_with_gst = total
-                latest_payment.gst_rate       = rate
-                latest_payment.save()
-            amount_paid = Decimal(str(request.data.get("amount_paid",0)))
-            if amount_paid>0:
-                installment = _create_installment(
-                    latest_payment,member,amount_paid,"enrollment",notes=request.data.get("notes",""),mode_of_payment=request.data.get("mode_of_payment","cash"),
-                )
-                _record_income_for_installment(member, latest_payment,installment)
-        
+        latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
 
-        return Response(TrainerAssignmentSerializer(assignment).data, status=201)
+        # Recompute latest payment to include trainer PT fee AND current diet (for upgrades)
+        from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+        diet_amt_current = _get_diet_amt() if member.diet else Decimal("0")
+        trainer_fee      = Decimal(str(trainer.personal_trainer_amt or 0))
+
+        if latest_payment and latest_payment.plan:
+            base, gst_amt, total, rate = _calc_gst(
+                latest_payment.plan.price + trainer_fee + diet_amt_current
+            )
+            latest_payment.plan_price       = base
+            latest_payment.diet_plan_amount = diet_amt_current
+            latest_payment.gst_rate         = rate
+            latest_payment.gst_amount       = gst_amt
+            latest_payment.total_with_gst   = total
+            latest_payment.save()
+
+            amount_paid = Decimal(str(request.data.get("amount_paid", 0)))
+            if amount_paid > 0:
+                installment = _create_installment(
+                    latest_payment, member, amount_paid, "enrollment",
+                    notes=request.data.get("notes", ""),
+                    mode_of_payment=request.data.get("mode_of_payment", "cash"),
+                )
+                _record_income_for_installment(member, latest_payment, installment)
+
+        bill_data = None
+        if latest_payment:
+            latest_payment.refresh_from_db()
+            bill_data = _build_bill(member, latest_payment, _gym_info())
+
+        return Response({
+            **TrainerAssignmentSerializer(assignment).data,
+            "bill": bill_data,
+        }, status=201)
 
     def update(self, request, *args, **kwargs):
         from apps.staff.models import StaffMember

@@ -24,13 +24,31 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
     }
   );
   const [saving, setSaving] = useState(false);
+  const [dietBaseAmt, setDietBaseAmt] = useState(0);
+  const [gymGstRate, setGymGstRate] = useState(18);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    api.get("/finances/gym-settings/").then(r => {
+      const s = r.data || {};
+      if (s.DIET_PLAN_AMOUNT != null) setDietBaseAmt(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
+      if (s.GST_RATE != null) setGymGstRate(parseFloat(s.GST_RATE) || 18);
+    }).catch(() => {});
+  }, []);
+
+  const selectedPlan = plans.find(p => String(p.id) === String(form.plan));
+  const planBasePrice = parseFloat(selectedPlan?.price ?? 0);
+  const dietWithGst = (form.diet && form.plan_type === "premium")
+    ? parseFloat((dietBaseAmt * (1 + gymGstRate / 100)).toFixed(2))
+    : 0;
+  // Recompute plan total from base price + GST rate (consistent with backend)
+  const planWithGst = planBasePrice > 0 ? parseFloat((planBasePrice * (1 + gymGstRate / 100)).toFixed(2)) : 0;
+  const enrollTotal = planWithGst + dietWithGst;
 
   const handlePlanChange = (id) => {
     set("plan", id);
     const found = plans.find(p => String(p.id) === String(id));
     if (found) {
-      if (!isEdit) set("amount_paid", found.price_with_gst ?? found.price);
       if (found.duration_days) {
         const renewal = new Date();
         renewal.setDate(renewal.getDate() + Number(found.duration_days));
@@ -43,16 +61,26 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
     set("plan_type", "basic");
     set("personal_trainer", false);
     set("diet", "");
+    if (!isEdit) set("amount_paid", found ? (found.price_with_gst ?? found.price) : "");
   };
 
   const handlePlanTypeChange = (planType) => {
     set("plan_type", planType);
     set("personal_trainer", true);
-    if (planType !== "premium") set("diet", "");
-    // recalc amount_paid to base price when changing type
-    if (!isEdit) {
-      const found = plans.find(p => String(p.id) === String(form.plan));
-      if (found) set("amount_paid", found.price_with_gst ?? found.price);
+    if (planType !== "premium") {
+      set("diet", "");
+      if (!isEdit) set("amount_paid", planWithGst || (selectedPlan?.price_with_gst ?? selectedPlan?.price ?? ""));
+    }
+  };
+
+  // When diet changes (premium), update amount_paid total
+  const handleDietChange = (dietId) => {
+    set("diet", dietId);
+    if (!isEdit && form.plan_type === "premium") {
+      const newDietGst = dietId
+        ? parseFloat((dietBaseAmt * (1 + gymGstRate / 100)).toFixed(2))
+        : 0;
+      set("amount_paid", (planWithGst + newDietGst).toFixed(2));
     }
   };
 
@@ -66,6 +94,18 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
           foodType: form.foodType || "veg"
         });
         toast.success("Member updated!");
+        const prevType = member.plan_type || "basic";
+        const nextType = form.plan_type;
+        // basic → standard/premium: need trainer assignment (PT + maybe diet)
+        if (prevType === "basic" && (nextType === "standard" || nextType === "premium")) {
+          onSave({ upgradeMemberId: member.id, upgradeType: "pt" });
+          return;
+        }
+        // standard → premium: trainer already assigned, only need diet fee
+        if (prevType === "standard" && nextType === "premium" && form.diet) {
+          onSave({ upgradeMemberId: member.id, upgradeType: "diet_only" });
+          return;
+        }
         onSave(null);
       } else {
         // Standard / Premium → hold enrollment until trainer is assigned
@@ -127,8 +167,6 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
       );
     } finally { setSaving(false); }
   };
-
-  const selectedPlan = plans.find(p => String(p.id) === String(form.plan));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -214,7 +252,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
             {form.plan_type === "premium" && (
               <div className="form-group">
                 <label className="form-label">Diet Plan</label>
-                <select className="form-input" value={form.diet || ""} onChange={e => set("diet", e.target.value)}>
+                <select className="form-input" value={form.diet || ""} onChange={e => handleDietChange(e.target.value)}>
                   <option value="">No Diet Plan</option>
                   {dietPlans.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>
@@ -228,16 +266,39 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
               <input className="form-input" type="date" value={form.renewal_date || ""}
                 onChange={e => set("renewal_date", e.target.value)} />
             </div>
-            {!isEdit && (
+            {!isEdit && selectedPlan && (
               <>
+                {/* Breakdown — show diet line only when diet is selected */}
+                {dietWithGst > 0 && (
+                  <div style={{
+                    gridColumn: "span 2", background: "var(--surface2)", borderRadius: 8,
+                    padding: "10px 14px", fontSize: 12
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 3 }}>
+                      <span>Membership (incl. GST)</span>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>₹{planWithGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)", marginBottom: 3 }}>
+                      <span>Diet Plan (incl. GST)</span>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>+ ₹{dietWithGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div style={{
+                      display: "flex", justifyContent: "space-between", fontWeight: 700,
+                      borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, color: "var(--text1)"
+                    }}>
+                      <span>Total Payable</span>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>₹{enrollTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Amount Paid Now (₹)</label>
                   <input className="form-input" type="number" min="0" value={form.amount_paid || ""}
                     onChange={e => set("amount_paid", e.target.value)} placeholder="0" />
                 </div>
-                {selectedPlan && (() => {
-                  const planTotal = parseFloat(selectedPlan.price_with_gst ?? selectedPlan.price);
-                  const remaining = Math.max(0, planTotal - parseFloat(form.amount_paid || 0));
+                {(() => {
+                  const total = enrollTotal || parseFloat(selectedPlan.price_with_gst ?? selectedPlan.price);
+                  const remaining = Math.max(0, total - parseFloat(form.amount_paid || 0));
                   return (
                     <div className="form-group">
                       <label className="form-label">Balance Remaining (₹)</label>
@@ -248,7 +309,7 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
                           color: remaining > 0 ? "var(--warn)" : "var(--accent)"
                         }} />
                       <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3, display: "block" }}>
-                        Total incl. GST ₹{planTotal.toLocaleString("en-IN")} — auto-calculated
+                        Total incl. GST ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 2 })} — auto-calculated
                       </span>
                     </div>
                   );
@@ -304,26 +365,45 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
 }
 
 /* ─── Renew modal ──────────────────────────────────── */
-function RenewModal({ member, plans, onClose, onSave }) {
+function RenewModal({ member, plans, dietPlans = [], onClose, onSave }) {
   const [planId, setPlanId] = useState(member.plan || "");
-  const [amount, setAmount] = useState(() => {
-    const p = plans.find(p => String(p.id) === String(member.plan));
-    return p ? (p.price_with_gst ?? p.price) : "";
-  });
+  const [dietId, setDietId] = useState(member.diet || "");
+  const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [modeOfPayment, setModeOfPayment] = useState("cash");
   const [saving, setSaving] = useState(false);
+  const [dietBase, setDietBase] = useState(0);   // base diet amount (pre-GST) from gym settings
+  const [gstRate, setGstRate] = useState(18);
+  const [userEdited, setUserEdited] = useState(false);
 
-  const handlePlanChange = (id) => {
-    setPlanId(id);
-    const found = plans.find(p => String(p.id) === String(id));
-    if (found) setAmount(found.price_with_gst ?? found.price);
-  };
+  useEffect(() => {
+    api.get("/finances/gym-settings/").then(r => {
+      const s = r.data || {};
+      if (s.DIET_PLAN_AMOUNT != null) setDietBase(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
+      if (s.GST_RATE != null) setGstRate(parseFloat(s.GST_RATE) || 18);
+    }).catch(() => {});
+  }, []);
 
   const activePlan =
     plans.find(p => String(p.id) === String(planId)) ||
     plans.find(p => String(p.id) === String(member.plan));
-  const planTotal = parseFloat(activePlan?.price_with_gst ?? activePlan?.price ?? 0);
+
+  const planBase = parseFloat(activePlan?.price ?? 0);
+  const dietWithGst = dietId ? dietBase * (1 + gstRate / 100) : 0;
+  // Recompute from base + diet using current GST rate so the two add up consistently
+  const planWithGst = planBase * (1 + gstRate / 100);
+  const planTotal = planWithGst + dietWithGst;
+
+  // Auto-fill amount when plan/diet changes (unless user has manually edited)
+  useEffect(() => {
+    if (!userEdited) setAmount(planTotal ? planTotal.toFixed(2) : "");
+  }, [planTotal, userEdited]);
+
+  const handlePlanChange = (id) => {
+    setPlanId(id);
+    setUserEdited(false);
+  };
+
   const balance = Math.max(0, planTotal - parseFloat(amount || 0));
 
   const submit = async (e) => {
@@ -331,6 +411,7 @@ function RenewModal({ member, plans, onClose, onSave }) {
     try {
       const res = await api.post(`/members/list/${member.id}/renew/`, {
         plan_id: planId || undefined,
+        diet_id: dietId ? Number(dietId) : null,
         amount_paid: amount,
         notes,
         mode_of_payment: modeOfPayment,
@@ -374,15 +455,50 @@ function RenewModal({ member, plans, onClose, onSave }) {
               ))}
             </select>
           </div>
+          <div className="form-group">
+            <label className="form-label">Diet Plan</label>
+            <select className="form-input" value={dietId} onChange={e => setDietId(e.target.value)}>
+              <option value="">No Diet Plan</option>
+              {dietPlans.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3, display: "block" }}>
+              Diet fee will be added to the renewal total.
+            </span>
+          </div>
+          {planTotal > 0 && (
+            <div style={{
+              background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", fontSize: 12,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 3 }}>
+                <span>Membership (incl. GST)</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{planWithGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+              </div>
+              {dietId && dietBase > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)", marginBottom: 3 }}>
+                  <span>Diet Plan (incl. GST)</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>+ ₹{dietWithGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              <div style={{
+                display: "flex", justifyContent: "space-between", fontWeight: 700,
+                borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, color: "var(--text1)"
+              }}>
+                <span>Total Payable</span>
+                <span style={{ fontFamily: "var(--font-mono)" }}>₹{planTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          )}
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Total incl. GST (₹)</label>
-              <input className="form-input" value={planTotal} disabled style={{ opacity: .6 }} />
+              <input className="form-input" value={planTotal.toFixed(2)} disabled style={{ opacity: .6 }} />
             </div>
             <div className="form-group">
               <label className="form-label">Amount Collected (₹) *</label>
               <input className="form-input" type="number" min="0" value={amount}
-                onChange={e => setAmount(e.target.value)} required placeholder="1500" />
+                onChange={e => { setUserEdited(true); setAmount(e.target.value); }} required placeholder="1500" />
             </div>
           </div>
           {planTotal > 0 && (
@@ -634,7 +750,14 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
                     Billed: <strong style={{ color: "var(--text1)" }}>
                       ₹{Number(p.total_with_gst || 0).toLocaleString("en-IN")}
                     </strong>
-                    &ensp;|&ensp; Base: <strong>₹{Number(p.plan_price || 0).toLocaleString("en-IN")}</strong>
+                    &ensp;|&ensp; Membership: <strong>₹{(Number(p.plan_price || 0) - Number(p.diet_plan_amount || 0)).toLocaleString("en-IN")}</strong>
+                    {Number(p.diet_plan_amount || 0) > 0 && (
+                      <>
+                        &ensp;+&ensp; Diet: <strong style={{ color: "var(--teal)" }}>
+                          ₹{Number(p.diet_plan_amount).toLocaleString("en-IN")}
+                        </strong>
+                      </>
+                    )}
                     &ensp;+&ensp; GST {p.gst_rate || 0}%: <strong style={{ color: "var(--warn)" }}>
                       ₹{Number(p.gst_amount || 0).toLocaleString("en-IN")}
                     </strong>
@@ -780,6 +903,121 @@ function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCa
   );
 }
 
+/* ─── Diet Upgrade Modal (standard → premium) ─────── */
+function DietUpgradeModal({ memberId, onClose, onBill }) {
+  const [dietBase, setDietBase] = useState(0);
+  const [gstRate, setGstRate]   = useState(18);
+  const [amount, setAmount]     = useState("");
+  const [mode, setMode]         = useState("cash");
+  const [saving, setSaving]     = useState(false);
+
+  useEffect(() => {
+    api.get("/finances/gym-settings/").then(r => {
+      const s = r.data || {};
+      const base = parseFloat(s.DIET_PLAN_AMOUNT) || 0;
+      const rate = parseFloat(s.GST_RATE) || 18;
+      setDietBase(base);
+      setGstRate(rate);
+      setAmount((base * (1 + rate / 100)).toFixed(2));
+    }).catch(() => {});
+  }, []);
+
+  const dietWithGst = parseFloat((dietBase * (1 + gstRate / 100)).toFixed(2));
+  const balance     = Math.max(0, dietWithGst - parseFloat(amount || 0));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await api.post(`/members/list/${memberId}/upgrade-diet/`, {
+        amount_paid: parseFloat(amount || 0),
+        mode_of_payment: mode,
+      });
+      toast.success("Diet plan fee recorded!");
+      if (res.data.bill) {
+        const raw      = res.data.bill;
+        const dietB    = parseFloat(raw.diet_plan_amount || 0);
+        const gstAmt   = parseFloat((dietB * raw.gst_rate / 100).toFixed(2));
+        const addTotal = parseFloat((dietB + gstAmt).toFixed(2));
+        const paid     = Math.min(parseFloat(amount || 0), addTotal);
+        const bal      = parseFloat(Math.max(0, addTotal - paid).toFixed(2));
+        onBill({
+          ...raw,
+          is_diet_upgrade: true,
+          membership_fee:  0,
+          pt_fee:          0,
+          plan_price:      dietB,
+          gst_amount:      gstAmt,
+          total_with_gst:  addTotal,
+          amount_paid:     paid,
+          balance:         bal,
+        });
+      } else onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to record diet fee");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">Diet Plan Upgrade — Collect Fee</div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }}>
+          <div style={{ background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 3 }}>
+              <span>Diet Plan (base)</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>₹{dietBase.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: "var(--warn)", marginBottom: 3 }}>
+              <span>GST ({gstRate}%)</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>₹{(dietWithGst - dietBase).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--teal)", borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
+              <span>Diet Fee (incl. GST)</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>₹{dietWithGst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Amount to Collect (₹)</label>
+              <input className="form-input" type="number" min="0" value={amount}
+                onChange={e => setAmount(e.target.value)} placeholder="0" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Mode of Payment</label>
+              <select className="form-input" value={mode} onChange={e => setMode(e.target.value)}>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          {dietWithGst > 0 && (
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              background: balance > 0 ? "rgba(255,184,48,.1)" : "rgba(168,255,87,.08)",
+              border: `1px solid ${balance > 0 ? "rgba(255,184,48,.3)" : "rgba(168,255,87,.2)"}`,
+              borderRadius: 8, padding: "10px 14px", fontSize: 13
+            }}>
+              <span style={{ color: "var(--text2)" }}>{balance > 0 ? "⚠ Balance remaining" : "✓ Fully paid"}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: balance > 0 ? "var(--warn)" : "var(--accent)" }}>
+                ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Recording…" : "Record Diet Fee"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main page ────────────────────────────────────── */
 export default function Members() {
   const navigate = useNavigate();
@@ -800,6 +1038,7 @@ export default function Members() {
   const [expiringDays, setExpiringDays] = useState("");           // number string | ""
   const [confirmState, setConfirmState] = useState(null);
   const [viewMember, setViewMember] = useState(null);
+  const [dietUpgradeMemberId, setDietUpgradeMemberId] = useState(null);
 
 
   useEffect(() => {
@@ -844,8 +1083,19 @@ export default function Members() {
   const afterSave = (data) => {
     const isNewEnroll = data && typeof data === "object" && "newMemberId" in data;
     const isPending = data && typeof data === "object" && data.isPending === true;
+    const isUpgrade = data && typeof data === "object" && "upgradeMemberId" in data;
 
     closeModal();
+
+    if (isUpgrade) {
+      if (data.upgradeType === "diet_only") {
+        load();
+        setDietUpgradeMemberId(data.upgradeMemberId);
+        return;
+      }
+      navigate(`/trainer-assignments?newMember=${data.upgradeMemberId}&from=members`);
+      return;
+    }
 
     // Standard/Premium pending: navigate to trainer assignment without refreshing
     if (isPending) {
@@ -1157,7 +1407,7 @@ export default function Members() {
 
       {modal === "add" && <MemberModal plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave} />}
       {modal === "edit" && selected && <MemberModal member={selected} plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave} />}
-      {modal === "renew" && selected && <RenewModal member={selected} plans={plans} onClose={closeModal} onSave={afterSave} />}
+      {modal === "renew" && selected && <RenewModal member={selected} plans={plans} dietPlans={dietPlans} onClose={closeModal} onSave={afterSave} />}
       {modal === "payments" && selected && (
         <PaymentHistoryModal
           member={selected}
@@ -1177,6 +1427,16 @@ export default function Members() {
         />
       )}
       {bill && <MemberBill bill={bill} onClose={() => setBill(null)} />}
+      {dietUpgradeMemberId && (
+        <DietUpgradeModal
+          memberId={dietUpgradeMemberId}
+          onClose={() => setDietUpgradeMemberId(null)}
+          onBill={(billData) => {
+            setDietUpgradeMemberId(null);
+            setBill(billData);
+          }}
+        />
+      )}
       {viewMember && (
         <ViewMemberModal
           member={viewMember}

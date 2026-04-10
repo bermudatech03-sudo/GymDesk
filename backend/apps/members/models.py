@@ -96,8 +96,10 @@ class MemberPayment(models.Model):
     plan           = models.ForeignKey(MembershipPlan, on_delete=models.SET_NULL, null=True, blank=True)
     invoice_number = models.CharField(max_length=60, blank=True)
  
-    # Plan base price (before GST)
-    plan_price     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Plan base price (before GST) — includes diet_plan_amount when applicable
+    plan_price       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Diet plan charge included in plan_price (0 when no diet plan)
+    diet_plan_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     # GST fields — computed once at enrollment/renewal
     gst_rate       = models.DecimalField(max_digits=5,  decimal_places=2, default=0)
     gst_amount     = models.DecimalField(max_digits=10, decimal_places=2, default=0)

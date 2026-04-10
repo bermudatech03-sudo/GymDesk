@@ -15,10 +15,10 @@ from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, 
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
     InstallmentPaymentSerializer, TrainerAssignmentSerializer, PTRenewalSerializer)
 from apps.notifications.utils import send_notification
-
+import logging
 
 from apps.finances.gst_utils import get_gst_rate as _get_gst_rate, get_gym_info as _gym_info
-
+logger = logging.getLogger(__name__)
 def _gst_rate():
     return _get_gst_rate()
 
@@ -130,6 +130,11 @@ def _build_bill(member, payment, gym):
             "mode_of_payment":  inst.mode_of_payment,
         })
 
+    diet_amt = float(payment.diet_plan_amount)
+    plan_base_price = float(payment.plan.price) if payment.plan else 0.0
+    # plan_price = plan.price + pt_fee + diet; derive pt_fee from the difference
+    derived_pt_fee = max(0.0, float(payment.plan_price) - plan_base_price - diet_amt)
+    membership_fee = plan_base_price if payment.plan else float(payment.plan_price) - diet_amt - derived_pt_fee
     return {
         "invoice_number":    payment.invoice_number,
         "member_id":         member.display_id(),
@@ -138,7 +143,11 @@ def _build_bill(member, payment, gym):
         "email":             member.email,
         "plan_name":         payment.plan.name if payment.plan else "",
         "plan_duration":     payment.plan.duration_days if payment.plan else 0,
+        # plan_price is the combined base (membership + PT + diet); show each separately
         "plan_price":        float(payment.plan_price),
+        "membership_fee":    membership_fee,
+        "pt_fee":            derived_pt_fee,
+        "diet_plan_amount":  diet_amt,
         "gst_rate":          float(payment.gst_rate),
         "gst_amount":        float(payment.gst_amount),
         "total_with_gst":    float(payment.total_with_gst),
@@ -264,20 +273,23 @@ class MemberViewSet(viewsets.ModelViewSet):
         bill_data   = None
 
         if plan:
-            base, gst_amt, total, rate = _calc_gst(plan.price)
+            from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+            diet_amt = _get_diet_amt() if diet else Decimal("0")
+            base, gst_amt, total, rate = _calc_gst(plan.price + diet_amt)
             inv_no = _invoice_number(member.id, join)
 
             payment = MemberPayment.objects.create(
-                member         = member,
-                plan           = plan,
-                invoice_number = inv_no,
-                plan_price     = base,
-                gst_rate       = rate,
-                gst_amount     = gst_amt,
-                total_with_gst = total,
-                amount_paid    = Decimal("0"),
-                valid_from     = join,
-                valid_to       = renew or join,
+                member           = member,
+                plan             = plan,
+                invoice_number   = inv_no,
+                plan_price       = base,
+                diet_plan_amount = diet_amt,
+                gst_rate         = rate,
+                gst_amount       = gst_amt,
+                total_with_gst   = total,
+                amount_paid      = Decimal("0"),
+                valid_from       = join,
+                valid_to         = renew or join,
             )
 
             if amount_paid > 0:
@@ -293,7 +305,7 @@ class MemberViewSet(viewsets.ModelViewSet):
             bill_data = _build_bill(member, payment, _gym_info())
 
         try: send_notification(member, "enrollment")
-        except: pass
+        except Exception as e: logger.error(f"failed to send enrollment notification{e}")
 
         try:
             from apps.notifications.whatsapp import send_bill_on_whatsapp
@@ -326,23 +338,33 @@ class MemberViewSet(viewsets.ModelViewSet):
         old_renewal = member.renewal_date
         amount_paid = Decimal(str(s.validated_data["amount_paid"]))
 
+        # Allow caller to set/change/remove diet on renewal
+        if "diet_id" in request.data:
+            new_diet_id = request.data.get("diet_id") or None
+            member.diet = DietPlan.objects.filter(pk=new_diet_id).first() if new_diet_id else None
+            member.save()
+
         member.renew()
 
-        base, gst_amt, total, rate = _calc_gst(member.plan.price if member.plan else amount_paid)
+        from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+        diet_amt  = _get_diet_amt() if member.diet else Decimal("0")
+        plan_base = (member.plan.price if member.plan else amount_paid) + diet_amt
+        base, gst_amt, total, rate = _calc_gst(plan_base)
         inv_no = _invoice_number(member.id, timezone.localdate(), "-R")
 
         payment = MemberPayment.objects.create(
-            member         = member,
-            plan           = member.plan,
-            invoice_number = inv_no,
-            plan_price     = base,
-            gst_rate       = rate,
-            gst_amount     = gst_amt,
-            total_with_gst = total,
-            amount_paid    = Decimal("0"),
-            valid_from     = old_renewal or timezone.localdate(),
-            valid_to       = member.renewal_date,
-            notes          = s.validated_data.get("notes",""),
+            member           = member,
+            plan             = member.plan,
+            invoice_number   = inv_no,
+            plan_price       = base,
+            diet_plan_amount = diet_amt,
+            gst_rate         = rate,
+            gst_amount       = gst_amt,
+            total_with_gst   = total,
+            amount_paid      = Decimal("0"),
+            valid_from       = old_renewal or timezone.localdate(),
+            valid_to         = member.renewal_date,
+            notes            = s.validated_data.get("notes",""),
         )
 
         if amount_paid > 0:
@@ -415,6 +437,64 @@ class MemberViewSet(viewsets.ModelViewSet):
 
         return Response({
             **MemberPaymentSerializer(payment).data,
+            "bill": bill_data,
+        })
+
+    @action(detail=True, methods=["post"], url_path="upgrade-diet")
+    def upgrade_diet(self, request, pk=None):
+        """
+        Called when a standard member is upgraded to premium (diet only added).
+        Updates latest payment to include diet fee, records installment if amount_paid > 0.
+        Does NOT create a new TrainerAssignment — use this instead of assign-trainer for
+        standard→premium upgrades where PT was already assigned.
+        """
+        from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+        member = self.get_object()
+
+        if not member.diet:
+            return Response({"detail": "Assign a diet plan to the member first."}, status=400)
+
+        latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
+        if not latest_payment:
+            return Response({"detail": "No payment record found for this member."}, status=400)
+
+        diet_amt = _get_diet_amt()
+        if diet_amt <= 0:
+            return Response({"detail": "Diet plan amount is not configured in settings."}, status=400)
+
+        if latest_payment.diet_plan_amount >= diet_amt:
+            return Response({"detail": "Diet plan fee already included in this payment cycle."}, status=400)
+
+        # Re-derive existing PT fee from plan_price = plan.base + PT + previous_diet
+        plan_base_price = latest_payment.plan.price if latest_payment.plan else Decimal("0")
+        existing_pt_fee = max(
+            Decimal("0"),
+            latest_payment.plan_price - plan_base_price - latest_payment.diet_plan_amount
+        )
+
+        base, gst_amt, total, rate = _calc_gst(plan_base_price + existing_pt_fee + diet_amt)
+        latest_payment.plan_price       = base
+        latest_payment.diet_plan_amount = diet_amt
+        latest_payment.gst_rate         = rate
+        latest_payment.gst_amount       = gst_amt
+        latest_payment.total_with_gst   = total
+        latest_payment.save()
+
+        amount_paid = Decimal(str(request.data.get("amount_paid", 0)))
+        if amount_paid > 0:
+            installment = _create_installment(
+                latest_payment, member, amount_paid, "balance",
+                notes=request.data.get("notes", ""),
+                mode_of_payment=request.data.get("mode_of_payment", "cash"),
+            )
+            _record_income_for_installment(member, latest_payment, installment)
+
+        latest_payment.refresh_from_db()
+        bill_data = _build_bill(member, latest_payment, _gym_info())
+        bill_data["is_diet_upgrade"] = True   # hint for frontend to show only diet row
+
+        return Response({
+            **MemberPaymentSerializer(latest_payment).data,
             "bill": bill_data,
         })
 
@@ -735,27 +815,42 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
 
         assignment.save()
 
-        # Update the member's latest payment to include the trainer's PT fee
-        if trainer.personal_trainer_amt:
-            latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
-            if latest_payment and latest_payment.plan:
-                base, gst_amt, total, rate = _calc_gst(
-                    latest_payment.plan.price + trainer.personal_trainer_amt
-                )
-                latest_payment.plan_price     = base
-                latest_payment.gst_amount     = gst_amt
-                latest_payment.total_with_gst = total
-                latest_payment.gst_rate       = rate
-                latest_payment.save()
-            amount_paid = Decimal(str(request.data.get("amount_paid",0)))
-            if amount_paid>0:
-                installment = _create_installment(
-                    latest_payment,member,amount_paid,"enrollment",notes=request.data.get("notes",""),mode_of_payment=request.data.get("mode_of_payment","cash"),
-                )
-                _record_income_for_installment(member, latest_payment,installment)
-        
+        latest_payment = member.payments.select_related("plan").order_by("-created_at").first()
 
-        return Response(TrainerAssignmentSerializer(assignment).data, status=201)
+        # Recompute latest payment to include trainer PT fee AND current diet (for upgrades)
+        from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
+        diet_amt_current = _get_diet_amt() if member.diet else Decimal("0")
+        trainer_fee      = Decimal(str(trainer.personal_trainer_amt or 0))
+
+        if latest_payment and latest_payment.plan:
+            base, gst_amt, total, rate = _calc_gst(
+                latest_payment.plan.price + trainer_fee + diet_amt_current
+            )
+            latest_payment.plan_price       = base
+            latest_payment.diet_plan_amount = diet_amt_current
+            latest_payment.gst_rate         = rate
+            latest_payment.gst_amount       = gst_amt
+            latest_payment.total_with_gst   = total
+            latest_payment.save()
+
+            amount_paid = Decimal(str(request.data.get("amount_paid", 0)))
+            if amount_paid > 0:
+                installment = _create_installment(
+                    latest_payment, member, amount_paid, "enrollment",
+                    notes=request.data.get("notes", ""),
+                    mode_of_payment=request.data.get("mode_of_payment", "cash"),
+                )
+                _record_income_for_installment(member, latest_payment, installment)
+
+        bill_data = None
+        if latest_payment:
+            latest_payment.refresh_from_db()
+            bill_data = _build_bill(member, latest_payment, _gym_info())
+
+        return Response({
+            **TrainerAssignmentSerializer(assignment).data,
+            "bill": bill_data,
+        }, status=201)
 
     def update(self, request, *args, **kwargs):
         from apps.staff.models import StaffMember
@@ -873,6 +968,73 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
 
         return Response(TrainerAssignmentSerializer(assignment).data)
 
+    @action(detail=True, methods=["post"], url_path="pay-pt-balance")
+    def pay_pt_balance(self, request, pk=None):
+        """
+        Pay the outstanding balance on the latest partial/pending PTRenewal.
+        Records an Income entry and updates the PTRenewal status.
+        """
+        from apps.finances.models import Income
+        assignment = self.get_object()
+        member     = assignment.member
+        today      = timezone.localdate()
+
+        renewal = assignment.pt_renewals.filter(
+            status__in=["partial", "pending"]
+        ).order_by("-created_at").first()
+
+        if not renewal:
+            return Response({"detail": "No pending PT balance found."}, status=400)
+
+        balance = renewal.total_amount - renewal.amount_paid
+        if balance <= 0:
+            return Response({"detail": "No balance remaining on this PT renewal."}, status=400)
+
+        amount_paid     = Decimal(str(request.data.get("amount_paid", 0)))
+        mode_of_payment = request.data.get("mode_of_payment", "cash")
+        notes           = request.data.get("notes", "")
+
+        if amount_paid <= 0:
+            return Response({"detail": "amount_paid must be greater than 0."}, status=400)
+
+        amount_paid = min(amount_paid, balance)
+
+        # Update PTRenewal
+        renewal.amount_paid += amount_paid
+        new_balance = renewal.total_amount - renewal.amount_paid
+        renewal.status = "paid" if new_balance <= Decimal("0.01") else "partial"
+        renewal.save()
+
+        # GST-first allocation for the balance payment
+        gst_collected = Income.objects.filter(invoice_number=renewal.invoice_number).aggregate(
+            t=Sum("gst_amount")
+        )["t"] or Decimal("0")
+        gst_remaining = max(renewal.gst_amount - gst_collected, Decimal("0"))
+        gst_now  = min(amount_paid, gst_remaining).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        base_now = (amount_paid - gst_now).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        eff_rate = Decimal(str(renewal.gst_rate)) if gst_now > 0 else Decimal("0")
+
+        Income.objects.create(
+            source         = f"PT Renewal (Balance) — {member.name}",
+            category       = "personal_training",
+            base_amount    = base_now,
+            gst_rate       = eff_rate,
+            gst_amount     = gst_now,
+            amount         = amount_paid,
+            date           = today,
+            member_id      = member.id,
+            invoice_number = renewal.invoice_number,
+            notes          = (
+                f"PT Renewal Balance | {renewal.pt_start_date} → {renewal.pt_end_date} "
+                f"| plan_total:{renewal.total_amount} "
+                f"| mode:{mode_of_payment} "
+                f"| Trainer: {assignment.trainer.name}"
+                + (f" | {notes}" if notes else "")
+            ),
+        )
+
+        return Response(TrainerAssignmentSerializer(assignment).data)
+
     @action(detail=True, methods=["get"], url_path="pt-renewal-preview")
     def pt_renewal_preview(self, request, pk=None):
         """
@@ -888,9 +1050,19 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             return Response({"can_renew": False, "reason": "Member plan is not active."})
         if not member.renewal_date or member.renewal_date <= today:
             return Response({"can_renew": False, "reason": "Member plan has expired. Renew the membership first."})
+        if assignment.pt_end_date and assignment.pt_end_date >= member.renewal_date:
+            return Response({
+                "can_renew": False,
+                "reason": f"PT is already active until plan expiry ({member.renewal_date}). Extend the membership plan to unlock PT renewal.",
+            })
 
-        plan_days_remaining = (member.renewal_date - today).days
-        pt_days = min(30, plan_days_remaining)
+        plan_days_remaining  = (member.renewal_date - today).days
+        current_pt_remaining = (
+            max(0, (assignment.pt_end_date - today).days)
+            if assignment.pt_end_date else 0
+        )
+        # Charge only for the new gap being added (plan remaining minus already-covered days)
+        pt_days = min(30, max(0, plan_days_remaining - current_pt_remaining))
 
         full_amt = Decimal(str(trainer.personal_trainer_amt or 0))
         if full_amt <= 0:
@@ -899,12 +1071,18 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         base = (full_amt / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
         base_calc, gst_amt, total, rate = _calc_gst(base)
 
+        # End date = today + paid days + bonus days already active, capped at plan expiry
+        pt_end_preview = min(
+            today + timedelta(days=pt_days + current_pt_remaining),
+            member.renewal_date,
+        )
         return Response({
             "can_renew":            True,
             "pt_days":              pt_days,
             "plan_days_remaining":  plan_days_remaining,
+            "current_pt_remaining": current_pt_remaining,
             "pt_start_date":        str(today),
-            "pt_end_date":          str(today + timedelta(days=pt_days)),
+            "pt_end_date":          str(pt_end_preview),
             "base_amount":          float(base_calc),
             "gst_rate":             float(rate),
             "gst_amount":           float(gst_amt),
@@ -943,17 +1121,25 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         if not member.renewal_date or member.renewal_date <= today:
             return Response({"detail": "Member plan has expired. Renew the membership plan first."}, status=400)
 
-        plan_days_remaining = (member.renewal_date - today).days
-        pt_days = min(30, plan_days_remaining)
+        if assignment.pt_end_date and assignment.pt_end_date >= member.renewal_date:
+            return Response({"detail": f"PT is already active until plan expiry ({member.renewal_date}). Extend the membership plan first."}, status=400)
+
+        plan_days_remaining  = (member.renewal_date - today).days
+        current_pt_remaining = (
+            max(0, (assignment.pt_end_date - today).days)
+            if assignment.pt_end_date else 0
+        )
+        # Charge only for the new days being added beyond current PT coverage
+        pt_days = min(30, max(0, plan_days_remaining - current_pt_remaining))
 
         if pt_days <= 0:
-            return Response({"detail": "No days remaining in the membership plan."}, status=400)
+            return Response({"detail": "No new PT days to renew — PT already covers the remaining plan period."}, status=400)
 
         full_amt = Decimal(str(trainer.personal_trainer_amt or 0))
         if full_amt <= 0:
             return Response({"detail": "Trainer has no PT fee configured."}, status=400)
 
-        # ── Amount calculation ────────────────────────────────────────────────
+        # ── Amount calculation (based on new days only) ───────────────────────
         base_for_days = (full_amt / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
         base, gst_amt, total, rate = _calc_gst(base_for_days)
 
@@ -961,7 +1147,11 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         mode_of_payment = request.data.get("mode_of_payment", "cash")
         notes           = request.data.get("notes", "")
         pt_start        = today
-        pt_end          = today + timedelta(days=pt_days)
+        # New end = today + new days + bonus carry-over, capped at plan expiry
+        pt_end = min(
+            today + timedelta(days=pt_days + current_pt_remaining),
+            member.renewal_date,
+        )
 
         # ── Invoice number ────────────────────────────────────────────────────
         renewal_seq = assignment.pt_renewals.count() + 1
@@ -1049,6 +1239,7 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             "pt_start_date":   str(pt_start),
             "pt_end_date":     str(pt_end),
             "pt_days":         pt_days,
+            "bonus_days":      current_pt_remaining,
             "full_pt_days":    30,
             "base_amount":     float(base),
             "gst_rate":        float(rate),

@@ -226,6 +226,9 @@ export default function MemberBill({ bill, onClose }) {
   const hasGST = fmtF(bill.gst_rate) > 0;
   const isPartial = !isPaid && fmtF(bill.amount_paid) > 0;
   const isStatement = !!bill.isStatement;
+  // For upgrade bills (standard→premium diet, or basic→premium assign),
+  // only show the additional fees — not the plan fee that was already paid.
+  const hideplanFee = !!bill.is_diet_upgrade || !!bill.is_pt_upgrade;
 
   const cycles = bill.installments?.length
     ? groupByInvoice(bill.installments)
@@ -351,7 +354,9 @@ export default function MemberBill({ bill, onClose }) {
     </div>` : ""}
     <div class="billing">
       <div class="section-label">Invoice Breakdown</div>
-      <div class="b-row"><span class="lbl">Membership Fee (Base)</span><span class="val">₹${fmt(bill.plan_price)}</span></div>
+      ${!bill.is_diet_upgrade && !bill.is_pt_upgrade && fmtF(bill.membership_fee ?? bill.plan_price) > 0 ? `<div class="b-row"><span class="lbl">Membership Fee (Base)</span><span class="val">₹${fmt(bill.membership_fee ?? bill.plan_price)}</span></div>` : ""}
+      ${fmtF(bill.pt_fee) > 0 ? `<div class="b-row"><span class="lbl">Personal Trainer Fee</span><span class="val">₹${fmt(bill.pt_fee)}</span></div>` : ""}
+      ${fmtF(bill.diet_plan_amount) > 0 ? `<div class="b-row"><span class="lbl">Diet Plan</span><span class="val">₹${fmt(bill.diet_plan_amount)}</span></div>` : ""}
       ${hasGST ? `<div class="b-row gst"><span class="lbl">GST @ ${bill.gst_rate}% (CGST ${bill.gst_rate / 2}% + SGST ${bill.gst_rate / 2}%)</span><span class="val">₹${fmt(bill.gst_amount)}</span></div>` : ""}
       <div class="b-row total"><span class="lbl">Total Payable</span><span class="val">₹${fmt(bill.total_with_gst)}</span></div>
       <div class="b-row paid"><span class="lbl">Total Paid So Far</span><span class="val">₹${fmt(bill.amount_paid)}</span></div>
@@ -602,10 +607,24 @@ export default function MemberBill({ bill, onClose }) {
 
               <div className="bill-breakdown">
                 <div className="bill-section-label">Invoice Breakdown</div>
-                <div className="bill-line">
-                  <span>Membership Fee (Base)</span>
-                  <span>₹{fmt(bill.plan_price)}</span>
-                </div>
+                {!hideplanFee && fmtF(bill.membership_fee ?? bill.plan_price) > 0 && (
+                  <div className="bill-line">
+                    <span>Membership Fee (Base)</span>
+                    <span>₹{fmt(bill.membership_fee ?? bill.plan_price)}</span>
+                  </div>
+                )}
+                {fmtF(bill.pt_fee) > 0 && (
+                  <div className="bill-line">
+                    <span>Personal Trainer Fee</span>
+                    <span>₹{fmt(bill.pt_fee)}</span>
+                  </div>
+                )}
+                {fmtF(bill.diet_plan_amount) > 0 && (
+                  <div className="bill-line">
+                    <span>Diet Plan</span>
+                    <span>₹{fmt(bill.diet_plan_amount)}</span>
+                  </div>
+                )}
                 {hasGST && (
                   <div className="bill-line bill-line--gst">
                     <span>GST @ {bill.gst_rate}%

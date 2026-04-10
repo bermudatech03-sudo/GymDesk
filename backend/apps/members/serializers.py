@@ -164,10 +164,18 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
     pt_renewal_days                 = serializers.SerializerMethodField()
     pt_renewal_amount               = serializers.SerializerMethodField()
     can_renew_pt                    = serializers.SerializerMethodField()
+    pt_renewal_blocked_reason       = serializers.SerializerMethodField()
     member_plan_expiry              = serializers.SerializerMethodField()
     member_status                   = serializers.SerializerMethodField()
     # Pending trainer payout from PT renewals (unpaid PTRenewal records)
-    pending_pt_renewal_trainer_amount = serializers.SerializerMethodField()
+    pending_pt_renewal_trainer_amount   = serializers.SerializerMethodField()
+    # Sum of member-side amount_paid for renewals not yet paid out to trainer
+    pt_renewal_member_paid_amount       = serializers.SerializerMethodField()
+    # Whether any PTRenewal has already been paid out to trainer
+    has_paid_pt_renewals                = serializers.SerializerMethodField()
+    # Balance remaining on the latest partial/pending PTRenewal
+    pending_pt_balance                  = serializers.SerializerMethodField()
+    pending_pt_balance_invoice          = serializers.SerializerMethodField()
 
     class Meta:
         model  = TrainerAssignment
@@ -214,9 +222,11 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
 
     def get_pt_renewal_days(self, obj):
         """
-        Days available for the NEXT PT renewal:
-        min(30, days remaining in the member's plan from today).
-        Returns 0 if plan is expired or member is inactive.
+        Chargeable days for the NEXT PT renewal.
+        = min(30, plan_days_remaining - current_pt_days_remaining)
+        so we only charge for the gap being added, not re-charge covered days.
+        Returns 0 if plan is expired, member is inactive, or PT already
+        covers the full remaining plan period.
         """
         from django.utils import timezone
         today = timezone.localdate()
@@ -224,8 +234,13 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
             return 0
         if not obj.member.renewal_date or obj.member.renewal_date <= today:
             return 0
-        remaining = (obj.member.renewal_date - today).days
-        return min(30, remaining)
+        if obj.pt_end_date and obj.pt_end_date >= obj.member.renewal_date:
+            return 0
+        plan_remaining    = (obj.member.renewal_date - today).days
+        current_pt_remaining = (
+            max(0, (obj.pt_end_date - today).days) if obj.pt_end_date else 0
+        )
+        return min(30, max(0, plan_remaining - current_pt_remaining))
 
     def get_pt_renewal_amount(self, obj):
         """GST-inclusive prorated PT fee for the next renewal period."""
@@ -242,14 +257,29 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
         return float(base + gst)
 
     def get_can_renew_pt(self, obj):
-        """True when the member's plan is active and has days remaining."""
+        """True only when there are new PT days to cover beyond the current PT expiry."""
         from django.utils import timezone
         today = timezone.localdate()
         if obj.member.status != "active":
             return False
         if not obj.member.renewal_date or obj.member.renewal_date <= today:
             return False
+        # PT already covers up to (or past) plan expiry — nothing more to renew
+        if obj.pt_end_date and obj.pt_end_date >= obj.member.renewal_date:
+            return False
         return True
+
+    def get_pt_renewal_blocked_reason(self, obj):
+        """Human-readable reason when can_renew_pt is False, or None if renewal is allowed."""
+        from django.utils import timezone
+        today = timezone.localdate()
+        if obj.member.status != "active":
+            return "Member plan is inactive"
+        if not obj.member.renewal_date or obj.member.renewal_date <= today:
+            return "Member plan has expired — extend membership first"
+        if obj.pt_end_date and obj.pt_end_date >= obj.member.renewal_date:
+            return f"PT is active until plan expiry ({obj.member.renewal_date}) — extend membership to unlock renewal"
+        return None
 
     def get_pending_pt_renewal_trainer_amount(self, obj):
         """Sum of trainer_payable_amount for all unpaid PTRenewal records on this assignment."""
@@ -258,6 +288,31 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
             t=Sum("trainer_payable_amount")
         )["t"]
         return float(result or 0)
+
+    def get_pt_renewal_member_paid_amount(self, obj):
+        """Sum of amount_paid collected from member for renewals not yet paid out to trainer."""
+        from django.db.models import Sum
+        result = obj.pt_renewals.filter(trainer_paid=False).aggregate(
+            t=Sum("amount_paid")
+        )["t"]
+        return float(result or 0)
+
+    def get_has_paid_pt_renewals(self, obj):
+        """True when at least one PTRenewal has been paid out to the trainer."""
+        return obj.pt_renewals.filter(trainer_paid=True).exists()
+
+    def get_pending_pt_balance(self, obj):
+        """Balance remaining on the latest partial/pending PTRenewal."""
+        latest = obj.pt_renewals.filter(status__in=["partial", "pending"]).order_by("-created_at").first()
+        if not latest:
+            return 0.0
+        bal = latest.total_amount - latest.amount_paid
+        return float(max(bal, Decimal("0")))
+
+    def get_pending_pt_balance_invoice(self, obj):
+        """Invoice number of the latest partial/pending PTRenewal."""
+        latest = obj.pt_renewals.filter(status__in=["partial", "pending"]).order_by("-created_at").first()
+        return latest.invoice_number if latest else None
 
     def validate(self, data):
         if data.get("startingtime") and data.get("endingtime"):

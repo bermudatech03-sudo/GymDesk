@@ -1,5 +1,6 @@
 import logging
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -12,7 +13,16 @@ from .utils import TEMPLATES
 logger = logging.getLogger(__name__)
 
 # Max 10 concurrent WhatsApp HTTP calls at a time
-_executor = ThreadPoolExecutor(max_workers=10)
+_executor = None
+_executor_lock = threading.Lock()
+
+def _get_executor():
+    global _executor
+    if _executor is None:
+        with _executor_lock:
+            if _executor is None:
+                _executor = ThreadPoolExecutor(max_workers=10)
+    return _executor
 
 
 @receiver(post_save, sender="members.MembershipPlan")
@@ -81,19 +91,25 @@ def dispatch_whatsapp_on_create(sender, instance, created, **kwargs):
 
     def _send():
         # Small delay to avoid hammering Meta API when bulk-creating
+        from django.db import connection
+        connection.close()
         time.sleep(0.1)
-        result = send_whatsapp_message(to=phone, message=message)
-        if result["success"]:
-            Notification.objects.filter(pk=pk).update(
-                status="sent",
-                sent_at=timezone.now(),
-            )
-            logger.info(f"Notification {pk} sent to {phone}")
-        else:
-            Notification.objects.filter(pk=pk).update(
-                status="failed",
-                error_log=result.get("error", "Unknown error"),
-            )
-            logger.error(f"Notification {pk} failed: {result.get('error')}")
+        try:
+            result = send_whatsapp_message(to=phone, message=message)
 
-    _executor.submit(_send)
+            if result["success"]:
+                Notification.objects.filter(pk=pk).update(
+                    status="sent",
+                    sent_at=timezone.now(),
+                )
+                logger.info(f"Notification {pk} sent to {phone}")
+            else:
+                Notification.objects.filter(pk=pk).update(
+                    status="failed",
+                    error_log=result.get("error", "Unknown error"),
+                )
+                logger.error(f"Notification {pk} failed: {result.get('error')}")
+        except Exception as e:
+            logger.exception(f"Notification {pk} thread crashed: {e}")
+
+    _get_executor().submit(_send)

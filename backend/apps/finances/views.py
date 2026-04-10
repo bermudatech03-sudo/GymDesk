@@ -62,10 +62,22 @@ class FinanceSummaryView(APIView):
         inc_by_cat = list(inc.values("category").annotate(total=Sum("amount")).order_by("-total"))
         exp_by_cat = list(exp.values("category").annotate(total=Sum("amount")).order_by("-total"))
 
-        from apps.members.models import MemberPayment
-        outstanding = MemberPayment.objects.filter(
-            status__in=["partial","pending"]
+        from apps.members.models import MemberPayment, PTRenewal
+        from django.db.models import F, ExpressionWrapper, DecimalField as DjangoDecimalField
+        membership_outstanding = MemberPayment.objects.filter(
+            status__in=["partial", "pending"]
         ).aggregate(t=Sum("balance"))["t"] or 0
+
+        pt_renewal_outstanding = PTRenewal.objects.filter(
+            status__in=["partial", "pending"]
+        ).annotate(
+            bal=ExpressionWrapper(
+                F("total_amount") - F("amount_paid"),
+                output_field=DjangoDecimalField(),
+            )
+        ).aggregate(t=Sum("bal"))["t"] or 0
+
+        outstanding = membership_outstanding + pt_renewal_outstanding
 
         return Response({
             "month": month, "year": year,
@@ -75,6 +87,8 @@ class FinanceSummaryView(APIView):
             "total_expense":        float(total_expense),
             "net_savings":          float(net_savings),
             "outstanding_balance":  float(outstanding),
+            "pt_renewal_outstanding": float(pt_renewal_outstanding),
+            "membership_outstanding": float(membership_outstanding),
             "monthly_trend":        monthly,
             "income_by_category":   inc_by_cat,
             "expense_by_category":  exp_by_cat,

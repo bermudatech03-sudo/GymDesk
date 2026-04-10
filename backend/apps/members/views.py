@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +8,8 @@ from django.utils import timezone
 from django.db.models import Sum, Q
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment, PTRenewal
 from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, PlanSerializer, MemberPaymentSerializer,
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
@@ -286,10 +289,20 @@ class MemberViewSet(viewsets.ModelViewSet):
                     )
                     _record_income_for_installment(member, payment, installment)
 
+            payment.refresh_from_db()
             bill_data = _build_bill(member, payment, _gym_info())
 
         try: send_notification(member, "enrollment")
         except: pass
+
+        try:
+            from apps.notifications.whatsapp import send_bill_on_whatsapp
+            phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+            if phone and not phone.startswith("91"):
+                phone = f"91{phone}"
+            send_bill_on_whatsapp(phone, bill_data, "enrollment")
+        except Exception as e:
+            logger.warning(f"Bill WhatsApp send failed for enrollment: {e}")
 
         return Response({
             **MemberSerializer(member).data,
@@ -343,7 +356,18 @@ class MemberViewSet(viewsets.ModelViewSet):
         try: send_notification(member, "renewal_confirm")
         except: pass
 
+        payment.refresh_from_db()
         bill_data = _build_bill(member, payment, _gym_info())
+
+        try:
+            from apps.notifications.whatsapp import send_bill_on_whatsapp
+            phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+            if phone and not phone.startswith("91"):
+                phone = f"91{phone}"
+            send_bill_on_whatsapp(phone, bill_data, "renewal")
+        except Exception as e:
+            logger.warning(f"Bill WhatsApp send failed for renewal: {e}")
+
         return Response({
             **MemberSerializer(member).data,
             "bill": bill_data,
@@ -377,7 +401,18 @@ class MemberViewSet(viewsets.ModelViewSet):
         )
         _record_income_for_installment(member, payment, installment)
 
+        payment.refresh_from_db()
         bill_data = _build_bill(member, payment, _gym_info())
+
+        try:
+            from apps.notifications.whatsapp import send_bill_on_whatsapp
+            phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+            if phone and not phone.startswith("91"):
+                phone = f"91{phone}"
+            send_bill_on_whatsapp(phone, bill_data, "balance")
+        except Exception as e:
+            logger.warning(f"Bill WhatsApp send failed for balance payment: {e}")
+
         return Response({
             **MemberPaymentSerializer(payment).data,
             "bill": bill_data,

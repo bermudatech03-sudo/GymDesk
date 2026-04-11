@@ -45,6 +45,19 @@
   border: 1px solid var(--border);
 }
 
+/* Calendar: make sure grid tracks never exceed their share of the card width */
+.staff-calendar-card { overflow: hidden; }
+.staff-calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  width: 100%;
+}
+.staff-calendar-cell {
+  min-width: 0;
+  overflow: hidden;
+  word-break: break-word;
+}
+.staff-calendar-cell > * { min-width: 0; }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .staff-tab { padding: 8px 14px; font-size: 12.5px; }
@@ -53,15 +66,14 @@
   .page-header { gap: 12px; }
 
   /* Calendar grid: smaller cells on mobile */
-  .staff-calendar-grid {
-    grid-template-columns: repeat(7, 1fr) !important;
-    gap: 2px !important;
-  }
+  .staff-calendar-grid { gap: 2px !important; }
   .staff-calendar-cell {
     padding: 4px 2px !important;
-    min-height: 48px !important;
-    font-size: 11px !important;
+    min-height: 52px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
   }
+  .staff-calendar-cell > div { font-size: 9px !important; }
 
   /* Payments summary cards: 1 col on mobile */
   .payments-summary { grid-template-columns: 1fr 1fr !important; }

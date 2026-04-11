@@ -179,6 +179,44 @@ export default function Enquiry() {
         )}
       </div>
 
+      {/* Mobile cards */}
+      {!loading && filtered.length > 0 && (
+        <div className="mobile-card-list">
+          {filtered.map(e => {
+            const s = STATUS_LABELS[e.status] || STATUS_LABELS.new;
+            return (
+              <div key={e.id} className="mobile-card">
+                <div className="mobile-card__left">
+                  <span className="mobile-card__title">{e.name}</span>
+                  <span className="mobile-card__meta" style={{ fontFamily: "var(--font-mono)" }}>
+                    {e.phone}
+                  </span>
+                  {e.email && <span className="mobile-card__meta">{e.email}</span>}
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span className={`badge ${s.cls}`} style={{ fontSize: 11 }}>{s.label}</span>
+                    <span className="mobile-card__meta">
+                      Sent: {e.followups_sent} / Pending: {e.followups_pending}
+                    </span>
+                  </span>
+                  <span className="mobile-card__meta">
+                    Added: {new Date(e.created_at).toLocaleDateString("en-IN")}
+                  </span>
+                  {e.notes && (
+                    <span className="mobile-card__meta" style={{ maxWidth: "100%" }}>
+                      {e.notes}
+                    </span>
+                  )}
+                </div>
+                <div className="mobile-card__right">
+                  <button className="btn btn-sm btn-ghost" onClick={() => setModal(e)}>Edit</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDelete(e)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <div className="empty-state">Loading…</div>
@@ -189,7 +227,7 @@ export default function Enquiry() {
           <div className="empty-state-sub">Click "Add Enquiry" to record a new walk-in or call.</div>
         </div>
       ) : (
-        <div className="table-wrapper">
+        <div className="table-wrapper desktop-table-view">
           <table className="table">
             <thead>
               <tr>

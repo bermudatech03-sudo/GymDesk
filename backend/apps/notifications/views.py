@@ -19,26 +19,32 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def send_renewal_reminders(self, request):
-        days   = int(request.data.get("days", 3))
-        cutoff = timezone.now().date() + timedelta(days=days)
+        # Fire exactly 3 days before renewal date
+        target = timezone.now().date() + timedelta(days=3)
         members = Member.objects.filter(
             status="active",
-            renewal_date__lte=cutoff,
-            renewal_date__gte=timezone.now().date(),
+            renewal_date=target,
         )
-        count = sum(1 for m in members if not send_notification(m, "renewal_remind") or True)
+        count = 0
+        for m in members:
+            send_notification(m, "renewal_remind")
+            count += 1
         return Response({"sent": count, "message": f"Reminders sent to {count} members."})
 
     @action(detail=False, methods=["post"])
     def send_expiry_notices(self, request):
-        members = Member.objects.filter(
-            renewal_date__lt=timezone.now().date(),
+        today = timezone.now().date()
+        # Auto-expire any active member past renewal
+        Member.objects.filter(
             status="active",
-        )
+            renewal_date__lt=today,
+        ).update(status="expired")
+
+        # Send expiry notice exactly 3 days after expiry
+        target = today - timedelta(days=3)
+        members = Member.objects.filter(status="expired", renewal_date=target)
         count = 0
         for m in members:
-            m.status = "expired"
-            m.save()
             send_notification(m, "expiry")
             count += 1
         return Response({"processed": count})

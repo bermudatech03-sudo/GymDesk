@@ -545,13 +545,14 @@ function StaffCalendar({ staffId, staffName, onBack }) {
       })()}
 
       {/* Calendar grid */}
-      <div className="card" style={{ padding: 16 }}>
+      <div className="card staff-calendar-card" style={{ padding: 16 }}>
         {/* Day headers */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
+        <div className="staff-calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4, marginBottom: 4 }}>
           {DAYS_SHORT.map(d => (
             <div key={d} style={{
               textAlign: "center", fontSize: 11, fontWeight: 700,
-              color: d === "Sun" ? "var(--danger)" : "var(--text3)", padding: "4px 0"
+              color: d === "Sun" ? "var(--danger)" : "var(--text3)", padding: "4px 0",
+              minWidth: 0, overflow: "hidden",
             }}>
               {d}
             </div>
@@ -559,7 +560,7 @@ function StaffCalendar({ staffId, staffName, onBack }) {
         </div>
 
         {/* Pad + day cells */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+        <div className="staff-calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
           {Array.from({ length: padDays }).map((_, i) => <div key={`pad-${i}`} />)}
 
           {days.map(day => {
@@ -568,6 +569,7 @@ function StaffCalendar({ staffId, staffName, onBack }) {
 
             return (
               <div key={day.date}
+                className="staff-calendar-cell"
                 onClick={() => !day.is_future && setMarkDay({ date: day.date, existing: day.attendance_id ? day : null })}
                 style={{
                   borderRadius: 8, padding: "6px 4px", textAlign: "center",
@@ -580,6 +582,8 @@ function StaffCalendar({ staffId, staffName, onBack }) {
                   cursor: day.is_future ? "default" : "pointer",
                   opacity: day.is_future ? 0.35 : 1,
                   minHeight: 64,
+                  minWidth: 0,
+                  overflow: "hidden",
                   position: "relative",
                   transition: "filter .15s",
                 }}
@@ -1363,7 +1367,50 @@ export default function Staff() {
 
       {/* ── Staff list ── */}
       {tab === "staff" && (
-        <div className="card">
+        <>
+        {/* Mobile cards */}
+        <div className="mobile-card-list">
+          {loading ? (
+            <div className="mobile-card__empty">Loading…</div>
+          ) : staffList.length === 0 ? (
+            <div className="mobile-card__empty">No staff found</div>
+          ) : staffList.map(s => (
+            <div key={s.id} className="mobile-card">
+              <div className="mobile-card__left">
+                <span className="mobile-card__id">
+                  {s.staff_id_display || `S${String(s.id).padStart(4, "0")}`}
+                </span>
+                <span className="mobile-card__title">{s.name}</span>
+                <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span className="badge badge-blue" style={{ fontSize: 11 }}>{s.role}</span>
+                  <span className={`badge ${s.status === "active" ? "badge-green" :
+                      s.status === "on_leave" ? "badge-yellow" : "badge-gray"}`}
+                    style={{ fontSize: 11 }}>{s.status}</span>
+                </span>
+                <span className="mobile-card__meta">
+                  ₹{Number(s.salary).toLocaleString("en-IN")}
+                  {s.shift_template_name ? ` · ${s.shift_template_name}` : ""}
+                </span>
+              </div>
+              <div className="mobile-card__right">
+                <button className="btn btn-sm btn-secondary"
+                  onClick={() => { setSelected(s); setModal("edit"); }}>
+                  Edit
+                </button>
+                <button className="btn btn-sm"
+                  style={{
+                    background: "rgba(168,255,87,.1)", color: "var(--accent)",
+                    border: "1px solid rgba(168,255,87,.2)", whiteSpace: "nowrap"
+                  }}
+                  onClick={() => setCalStaff({ id: s.id, name: s.name })}>
+                  📅 Calendar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card desktop-table-view">
           <div className="table-wrap">
             <table>
               <thead><tr>
@@ -1425,11 +1472,51 @@ export default function Staff() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* ── Today's attendance ── */}
       {tab === "attendance" && (
-        <div className="card">
+        <>
+        {/* Mobile cards */}
+        <div className="mobile-card-list">
+          {loading ? (
+            <div className="mobile-card__empty">Loading…</div>
+          ) : attendance.length === 0 ? (
+            <div className="mobile-card__empty">No attendance marked today.</div>
+          ) : attendance.map(a => {
+            const meta = STATUS_META[a.status];
+            const wkFmt = a.worked_minutes > 0 ? fmt_mins(a.worked_minutes) :
+              (a.check_in && !a.check_out ? "In progress" : null);
+            return (
+              <div key={a.id} className="mobile-card">
+                <div className="mobile-card__left">
+                  <span className="mobile-card__title">{a.staff_name}</span>
+                  <span style={{
+                    padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    background: meta?.bg || "var(--surface2)",
+                    color: meta?.color || "var(--text2)",
+                    width: "fit-content",
+                  }}>
+                    {meta?.label || a.status}
+                  </span>
+                  <span className="mobile-card__meta">
+                    In: {a.check_in || "—"} · Out: {a.check_out || "—"}
+                  </span>
+                  {wkFmt && (
+                    <span className="mobile-card__meta" style={{ color: "var(--text2)" }}>
+                      Worked: {wkFmt}
+                      {a.late_minutes > 0 ? ` · Late +${a.late_minutes}m` : ""}
+                      {a.overtime_minutes > 0 ? ` · OT +${a.overtime_minutes}m` : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="card desktop-table-view">
           <div style={{
             padding: "14px 18px", borderBottom: "1px solid var(--border)",
             display: "flex", justifyContent: "space-between", alignItems: "center"
@@ -1530,6 +1617,7 @@ export default function Staff() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {/* ── Shifts tab ── */}

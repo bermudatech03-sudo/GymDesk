@@ -19,10 +19,10 @@ export default function Notifications() {
 
   useEffect(() => { load(); }, [load]);
 
-  const sendReminders = async (days) => {
+  const sendReminders = async () => {
     setSending(true);
     try {
-      const res = await api.post("/notifications/send_renewal_reminders/", { days });
+      const res = await api.post("/notifications/send_renewal_reminders/", {});
       toast.success(res.data.message);
       load();
     } catch { toast.error("Failed to send reminders"); } finally { setSending(false); }
@@ -53,12 +53,8 @@ export default function Notifications() {
       <div className="card" style={{padding:20,marginBottom:20}}>
         <div style={{fontFamily:"var(--font-display)",fontSize:14,fontWeight:700,marginBottom:14}}>Send Bulk Notifications</div>
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-          <button className="btn btn-primary" onClick={()=>sendReminders(3)} disabled={sending}>
+          <button className="btn btn-primary" onClick={sendReminders} disabled={sending}>
             {sending?"Sending…":"📲 Send 3-Day Renewal Reminders"}
-          </button>
-          <button className="btn btn-secondary" style={{color:"var(--warn)",borderColor:"rgba(255,184,48,.3)"}}
-            onClick={()=>sendReminders(7)} disabled={sending}>
-            ⏰ Send 7-Day Reminders
           </button>
           <button className="btn btn-danger" onClick={sendExpiry} disabled={sending}>
             ⚠ Process Expired Memberships
@@ -75,7 +71,41 @@ export default function Notifications() {
           <span style={{fontFamily:"var(--font-display)",fontSize:14,fontWeight:700}}>Notification Log</span>
           <button className="btn btn-sm btn-secondary" onClick={load}>Refresh</button>
         </div>
-        <div className="table-wrap">
+
+        {/* Mobile cards */}
+        <div className="mobile-card-list" style={{ padding: 12 }}>
+          {loading ? (
+            <div className="mobile-card__empty">Loading…</div>
+          ) : list.length === 0 ? (
+            <div className="mobile-card__empty">No notifications yet</div>
+          ) : list.map(n => (
+            <div key={n.id} className="mobile-card">
+              <div className="mobile-card__left">
+                <span className="mobile-card__title">{n.recipient_name}</span>
+                <span className="mobile-card__meta">{n.recipient_phone}</span>
+                <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span className={`badge ${channelColor[n.channel]||"badge-gray"}`} style={{ fontSize: 11 }}>
+                    {n.channel}
+                  </span>
+                  <span className={`badge ${statusColor[n.status]||"badge-gray"}`} style={{ fontSize: 11 }}>
+                    {n.status}
+                  </span>
+                  <span className="mobile-card__meta">{n.trigger_type.replace("_"," ")}</span>
+                </span>
+                {n.sent_at && (
+                  <span className="mobile-card__meta">
+                    {new Date(n.sent_at).toLocaleString("en-IN")}
+                  </span>
+                )}
+                <span className="mobile-card__meta" style={{ maxWidth: "100%", whiteSpace: "normal" }}>
+                  {n.message}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="table-wrap desktop-table-view">
           <table>
             <thead><tr>
               <th>Recipient</th><th>Trigger</th><th>Channel</th>

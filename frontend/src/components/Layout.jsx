@@ -67,13 +67,15 @@ export default function Layout() {
       <aside className={`sidebar ${mobileOpen ? "sidebar--mobile-open" : ""}`}>
         <div className="sidebar__logo">
           <div className="sidebar__logo-mark">G</div>
-          {!collapsed && (
-            <div className="sidebar__logo-text">
-              <span className="sidebar__logo-name">GymPro</span>
-              <span className="sidebar__logo-sub">CRM</span>
-            </div>
-          )}
-          <button className="sidebar__collapse" onClick={() => setCollapsed(p=>!p)}>
+          <div className="sidebar__logo-text">
+            <span className="sidebar__logo-name">GymPro</span>
+            <span className="sidebar__logo-sub">CRM</span>
+          </div>
+          <button
+            className="sidebar__collapse"
+            onClick={() => setCollapsed(p => !p)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
             {collapsed ? "›" : "‹"}
           </button>
         </div>
@@ -85,7 +87,7 @@ export default function Layout() {
               className={({ isActive }) =>
                 `sidebar__link ${isActive ? "sidebar__link--active" : ""}`}>
               <span className="sidebar__link-icon">{n.icon}</span>
-              {!collapsed && <span className="sidebar__link-label">{n.label}</span>}
+              <span className="sidebar__link-label">{n.label}</span>
             </NavLink>
           ))}
 
@@ -95,7 +97,7 @@ export default function Layout() {
             title="Open Kiosk"
             onClick={() => setMobileOpen(false)}>
             <span className="sidebar__link-icon">⊙</span>
-            {!collapsed && <span className="sidebar__link-label">Kiosk ↗</span>}
+            <span className="sidebar__link-label">Kiosk ↗</span>
           </a>
         </nav>
 
@@ -104,12 +106,10 @@ export default function Layout() {
             <div className="sidebar__avatar">
               {user?.full_name?.[0] || user?.username?.[0] || "A"}
             </div>
-            {!collapsed && (
-              <div className="sidebar__user-info">
-                <span className="sidebar__user-name">{user?.full_name||user?.username}</span>
-                <span className="sidebar__user-role">{user?.role}</span>
-              </div>
-            )}
+            <div className="sidebar__user-info">
+              <span className="sidebar__user-name">{user?.full_name||user?.username}</span>
+              <span className="sidebar__user-role">{user?.role}</span>
+            </div>
           </div>
           <button className="sidebar__logout" onClick={handleLogout} title="Logout">⏏</button>
         </div>

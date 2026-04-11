@@ -180,7 +180,34 @@ export default function Attendance() {
               <span className="badge badge-red">{mAbsent} absent</span>
             </div>
           </div>
-          <div className="table-wrap">
+
+          {/* Mobile cards */}
+          <div className="mobile-card-list" style={{ padding: 12 }}>
+            {loading ? (
+              <div className="mobile-card__empty">Loading…</div>
+            ) : mData.length === 0 ? (
+              <div className="mobile-card__empty">No records</div>
+            ) : mData.map(a => (
+              <div key={a.id} className="mobile-card">
+                <div className="mobile-card__left">
+                  <span className="mobile-card__id">{a.member_display_id}</span>
+                  <span className="mobile-card__title">{a.member_name}</span>
+                  <span className="mobile-card__meta">{a.date}</span>
+                  <span className="mobile-card__meta">
+                    In: {fmt_time(a.check_in)}
+                    {a.check_out ? ` · Out: ${fmt_time(a.check_out)}` : ""}
+                  </span>
+                </div>
+                <div className="mobile-card__right">
+                  <span className={`badge ${a.check_in ? "badge-green" : "badge-red"}`}>
+                    {a.check_in ? "Present" : "Absent"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="table-wrap desktop-table-view">
             <table>
               <thead><tr>
                 <th>ID</th>
@@ -235,7 +262,44 @@ export default function Attendance() {
               {sAbsent   > 0 && <span className="badge badge-red">{sAbsent} absent</span>}
             </div>
           </div>
-          <div className="table-wrap">
+
+          {/* Mobile cards */}
+          <div className="mobile-card-list" style={{ padding: 12 }}>
+            {loading ? (
+              <div className="mobile-card__empty">Loading…</div>
+            ) : sData.length === 0 ? (
+              <div className="mobile-card__empty">No records</div>
+            ) : sData.map(a => {
+              const sm      = STATUS_META[a.status] || { label: a.status, cls: "badge-gray" };
+              const wkFmt   = fmt_mins(a.worked_minutes);
+              const lateFmt = fmt_mins(a.late_minutes);
+              const otFmt   = fmt_mins(a.overtime_minutes);
+              return (
+                <div key={a.id} className="mobile-card">
+                  <div className="mobile-card__left">
+                    <span className="mobile-card__title">{a.staff_name}</span>
+                    <span className="mobile-card__meta">{a.date}</span>
+                    <span className="mobile-card__meta">
+                      In: {fmt_time(a.check_in)}
+                      {a.check_out ? ` · Out: ${fmt_time(a.check_out)}` : ""}
+                    </span>
+                    {(wkFmt || lateFmt || otFmt) && (
+                      <span className="mobile-card__meta" style={{ color: "var(--text2)" }}>
+                        {wkFmt ? `Worked: ${wkFmt}` : (a.check_in && !a.check_out ? "In progress" : "")}
+                        {lateFmt ? ` · Late +${lateFmt}` : ""}
+                        {otFmt ? ` · OT +${otFmt}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mobile-card__right">
+                    <span className={`badge ${sm.cls}`}>{sm.label}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="table-wrap desktop-table-view">
             <table>
               <thead><tr>
                 <th>Staff</th>

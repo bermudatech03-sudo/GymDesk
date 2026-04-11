@@ -1147,6 +1147,86 @@ export default function TrainerAssignments() {
         )}
       </div>
 
+      {/* Mobile cards */}
+      {!loading && assignments.length > 0 && (
+        <div className="mobile-card-list">
+          {assignments.map(a => {
+            const ptAmt      = a.trainer_pt_amt || 0;
+            const memberPaid = a.member_amount_paid || 0;
+            const memberCoveredPT = ptAmt > 0 && memberPaid >= ptAmt;
+            const canRenew   = a.can_renew_pt;
+            const pendingRenewalTrainer = a.pending_pt_renewal_trainer_amount || 0;
+            const renewalMemberPaid     = a.pt_renewal_member_paid_amount || 0;
+            const renewalCoveredPT      = pendingRenewalTrainer > 0 && renewalMemberPaid >= pendingRenewalTrainer;
+            const ptBalance             = a.pending_pt_balance || 0;
+            return (
+              <div key={a.id} className="mobile-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <div className="mobile-card__left" style={{ width: "100%" }}>
+                  <span className="mobile-card__id">{a.member_display_id}</span>
+                  <span className="mobile-card__title">{a.member_name}</span>
+                  {a.plan_name && (
+                    <span className="badge badge-green" style={{ fontSize: 11, width: "fit-content" }}>
+                      {a.plan_name}
+                    </span>
+                  )}
+                  <span className="mobile-card__meta">
+                    Trainer: {a.trainer_name} ({a.trainer_display_id})
+                  </span>
+                  <span className="mobile-card__meta">
+                    {a.startingtime?.slice(0, 5)} – {a.endingtime?.slice(0, 5)}
+                    {(a.working_day_names ?? []).length > 0 ? ` · ${(a.working_day_names ?? []).join(", ")}` : ""}
+                  </span>
+                  <div style={{ marginTop: 4 }}>
+                    <PTStatusBadge assignment={a} />
+                  </div>
+                  {ptAmt > 0 && (
+                    <span className="mobile-card__meta" style={{ color: "var(--text2)" }}>
+                      Member PT: ₹{memberPaid.toLocaleString("en-IN")} / ₹{ptAmt.toLocaleString("en-IN")}
+                      {memberCoveredPT ? " ✓" : ""}
+                    </span>
+                  )}
+                  {pendingRenewalTrainer > 0 && (
+                    <span className="mobile-card__meta" style={{ color: "var(--text2)" }}>
+                      Renewal: ₹{renewalMemberPaid.toLocaleString("en-IN")} / ₹{pendingRenewalTrainer.toLocaleString("en-IN")}
+                    </span>
+                  )}
+                </div>
+                <div className="mobile-card__actions" style={{ marginTop: 10, justifyContent: "flex-start" }}>
+                  {canRenew && (
+                    <button className="btn btn-sm btn-primary" onClick={() => setPtRenewalModal(a)}>
+                      Renew PT{a.pt_renewal_days > 0 ? ` (${a.pt_renewal_days}d)` : ""}
+                    </button>
+                  )}
+                  {ptBalance > 0 && (
+                    <button className="btn btn-sm btn-ghost"
+                      style={{ color: "#e09020", borderColor: "#e09020" }}
+                      onClick={() => setPtBalanceModal(a)}>
+                      Pay ₹{fmt(ptBalance)}
+                    </button>
+                  )}
+                  {ptAmt > 0 && !a.trainer_fee_paid && (
+                    <button className="btn btn-sm btn-primary"
+                      disabled={!memberCoveredPT}
+                      onClick={() => handlePayTrainerFee(a)}>
+                      Enroll ₹{ptAmt.toLocaleString("en-IN")}
+                    </button>
+                  )}
+                  {pendingRenewalTrainer > 0 && (
+                    <button className="btn btn-sm btn-primary"
+                      disabled={!renewalCoveredPT}
+                      onClick={() => handlePayPtTrainerFee(a)}>
+                      Renewal ₹{pendingRenewalTrainer.toLocaleString("en-IN")}
+                    </button>
+                  )}
+                  <button className="btn btn-sm btn-ghost" onClick={() => setModal(a)}>Edit</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDelete(a.id)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <div className="empty-state">Loading…</div>
@@ -1161,7 +1241,7 @@ export default function TrainerAssignments() {
           </div>
         </div>
       ) : (
-        <div className="table-wrapper">
+        <div className="table-wrapper desktop-table-view">
           <table className="table">
             <thead>
               <tr>

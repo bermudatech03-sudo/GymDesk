@@ -22,7 +22,7 @@
   overflow: hidden;
 }
 
-.layout--collapsed .sidebar { width: 64px; }
+.layout--collapsed .sidebar { width: 72px; }
 
 /* Logo */
 .sidebar__logo {
@@ -33,6 +33,7 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   min-height: var(--topbar-h);
+  position: relative;
 }
 .sidebar__logo-mark {
   width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
@@ -52,6 +53,32 @@
   transition: all 0.2s;
 }
 .sidebar__collapse:hover { background: var(--surface3); color: var(--text1); }
+
+/* ── Collapsed state (desktop) ── */
+.layout--collapsed .sidebar__logo {
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 8px;
+}
+.layout--collapsed .sidebar__logo-text,
+.layout--collapsed .sidebar__link-label,
+.layout--collapsed .sidebar__user-info {
+  display: none;
+}
+.layout--collapsed .sidebar__link {
+  justify-content: center;
+  padding: 10px 6px;
+  gap: 0;
+}
+.layout--collapsed .sidebar__footer {
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 6px;
+}
+.layout--collapsed .sidebar__user {
+  justify-content: center;
+  flex: 0 0 auto;
+}
 
 /* Nav */
 .sidebar__nav {
@@ -125,7 +152,7 @@
   overflow-x: hidden;
   transition: margin-left 0.3s var(--ease);
 }
-.layout--collapsed .main-area { margin-left: 64px; }
+.layout--collapsed .main-area { margin-left: 72px; }
 
 /* Topbar */
 .topbar {
@@ -176,18 +203,28 @@
 @media (max-width: 768px) {
   .topbar__hamburger { display: flex; align-items: center; justify-content: center; }
 
+  /* Collapse button is meaningless on mobile — hide it */
+  .sidebar__collapse { display: none; }
+
   /* Sidebar hidden by default, slides in when open */
   .sidebar {
-    transform: translateX(-100%);
-    transition: transform 0.28s var(--ease), width 0.3s var(--ease);
-  }
-  .sidebar--mobile-open {
-    transform: translateX(0);
     width: var(--sidebar-w) !important;
+    transform: translateX(-100%);
+    transition: transform 0.28s var(--ease);
   }
-  .sidebar--mobile-open .sidebar__logo-text,
-  .sidebar--mobile-open .sidebar__link-label,
-  .sidebar--mobile-open .sidebar__user-info { display: flex; }
+  .sidebar--mobile-open { transform: translateX(0); }
+
+  /* On mobile, ignore the desktop "collapsed" state entirely —
+     the sidebar is either fully shown (mobile-open) or hidden. */
+  .layout--collapsed .sidebar { width: var(--sidebar-w) !important; }
+  .layout--collapsed .sidebar__logo { flex-direction: row; padding: 18px 14px; }
+  .layout--collapsed .sidebar__logo-text,
+  .layout--collapsed .sidebar__link-label,
+  .layout--collapsed .sidebar__user-info { display: flex; }
+  .layout--collapsed .sidebar__link { justify-content: flex-start; padding: 10px 10px; gap: 10px; }
+  .layout--collapsed .sidebar__footer { flex-direction: row; gap: 8px; padding: 12px 8px; }
+  .layout--collapsed .sidebar__user { justify-content: flex-start; flex: 1; }
+  .layout--collapsed .main-area { margin-left: 0; }
 
   .sidebar-overlay { display: block; }
 

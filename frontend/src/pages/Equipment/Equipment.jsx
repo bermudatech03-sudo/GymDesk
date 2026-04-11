@@ -150,7 +150,46 @@ export default function Equipment() {
         </select>
       </div>
 
-      <div className="card">
+      {/* Mobile cards */}
+      <div className="mobile-card-list">
+        {loading ? (
+          <div className="mobile-card__empty">Loading…</div>
+        ) : list.filter(e=>e.is_active).length === 0 ? (
+          <div className="mobile-card__empty">No equipment found</div>
+        ) : list.filter(e=>e.is_active).map(e => (
+          <div key={e.id} className="mobile-card">
+            <div className="mobile-card__left">
+              <span className="mobile-card__title">{e.name}</span>
+              <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className="badge badge-blue" style={{ fontSize: 11 }}>
+                  {e.category?.replace("_"," ")}
+                </span>
+                <span className={`badge ${CONDITIONS[e.condition]||"badge-gray"}`} style={{ fontSize: 11 }}>
+                  {e.condition?.replace("_"," ")}
+                </span>
+              </span>
+              <span className="mobile-card__meta">
+                Qty: {e.quantity}
+                {e.brand ? ` · ${e.brand}` : ""}
+                {e.location ? ` · ${e.location}` : ""}
+              </span>
+              {e.next_service && (
+                <span className="mobile-card__meta"
+                  style={{ color: e.next_service <= today ? "var(--danger)" : "var(--text3)" }}>
+                  Next service: {e.next_service}
+                </span>
+              )}
+            </div>
+            <div className="mobile-card__right">
+              <button className="btn btn-sm btn-secondary"
+                onClick={()=>{ setSelected(e); setModal("edit"); }}>Edit</button>
+              <button className="btn btn-sm btn-danger" onClick={()=>deactivate(e)}>Remove</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card desktop-table-view">
         <div className="table-wrap">
           <table>
             <thead><tr>

@@ -7,24 +7,27 @@ from apps.members.models import Member, MemberAttendance
 from apps.finances.models import ToBuy,Expenditure,Income
 
 def send_renewal_reminders():
-    cutoff = timezone.now().date() + timedelta(days=7)
+    # Fire exactly 3 days before the renewal date
+    target = timezone.now().date() + timedelta(days=3)
     members = Member.objects.filter(
         status = "active",
-        renewal_date__lte = cutoff,
-        renewal_date__gte = timezone.now().date(),
+        renewal_date = target,
     )
     for member in members:
         send_notification(member, "renewal_remind")
 
 def send_expiry_notices():
-    members = Member.objects.filter(
-        status = "active",
-        renewal_date__lt = timezone.now().date(),
-    )
-    for member in members:
-        member.status="expired"
-        member.save()
-        send_notification(member,"expiry")
+    today = timezone.now().date()
+    # Auto-expire anyone past renewal date
+    Member.objects.filter(
+        status="active",
+        renewal_date__lt=today,
+    ).update(status="expired")
+
+    # Send expiry notice exactly 3 days after expiry
+    target = today - timedelta(days=3)
+    for member in Member.objects.filter(status="expired", renewal_date=target):
+        send_notification(member, "expiry")
 
 def send_daily_notice():
     items = ToBuy.objects.filter(

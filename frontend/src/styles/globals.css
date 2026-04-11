@@ -238,3 +238,81 @@ textarea.form-input { resize: vertical; min-height: 90px; }
   .stat-card { padding: 14px; }
   .stat-card .value { font-size: 22px; }
 }
+
+/* ── Generic Mobile Card / Desktop Table switch ──
+   Used across Staff, TrainerAssignments, Attendance, Equipment,
+   Enquiry and Notifications to avoid horizontal-scroll tables on phones. */
+.mobile-card-list  { display: none; }
+.desktop-table-view { display: block; }
+
+.mobile-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.mobile-card__left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.mobile-card__right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.mobile-card__id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 8px;
+  border-radius: 5px;
+  width: fit-content;
+}
+.mobile-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.mobile-card__meta {
+  font-size: 11.5px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.mobile-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mobile-card__empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 640px) {
+  .mobile-card-list  { display: block; }
+  .desktop-table-view { display: none; }
+}

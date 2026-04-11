@@ -13,10 +13,16 @@ function statusBadge(s) {
 }
 
 /* ─── Enroll modal ─────────────────────────────────── */
-function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
+function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSave }) {
   const isEdit = !!member?.id;
+  // Coerce plan/diet to strings so React <select> matches <option> values correctly
   const [form, setForm] = useState(member
-    ? { ...member, plan: member.plan || "", diet: member.diet || "", plan_type: member.plan_type || "basic" }
+    ? {
+        ...member,
+        plan: member.plan != null ? String(member.plan) : "",
+        diet: member.diet != null ? String(member.diet) : "",
+        plan_type: member.plan_type || "basic",
+      }
     : {
       name: "", phone: "", email: "", gender: "", plan: "", plan_type: "basic", diet: "",
       renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false,
@@ -26,6 +32,9 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
   const [saving, setSaving] = useState(false);
   const [dietBaseAmt, setDietBaseAmt] = useState(0);
   const [gymGstRate, setGymGstRate] = useState(18);
+  // Keep an always-fresh list of diet plans — parent may have a stale copy
+  // if plans were created/updated on another page since the last Members load.
+  const [dietPlans, setDietPlans] = useState(initialDietPlans || []);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -33,6 +42,11 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
       const s = r.data || {};
       if (s.DIET_PLAN_AMOUNT != null) setDietBaseAmt(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
       if (s.GST_RATE != null) setGymGstRate(parseFloat(s.GST_RATE) || 18);
+    }).catch(() => {});
+    // Always pull a fresh copy of diet plans when the modal opens
+    api.get("/members/diet-plans/").then(r => {
+      const data = Array.isArray(r.data) ? r.data : (r.data?.results ?? []);
+      setDietPlans(data);
     }).catch(() => {});
   }, []);
 
@@ -365,9 +379,9 @@ function MemberModal({ member, plans, dietPlans, onClose, onSave }) {
 }
 
 /* ─── Renew modal ──────────────────────────────────── */
-function RenewModal({ member, plans, dietPlans = [], onClose, onSave }) {
-  const [planId, setPlanId] = useState(member.plan || "");
-  const [dietId, setDietId] = useState(member.diet || "");
+function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, onSave }) {
+  const [planId, setPlanId] = useState(member.plan != null ? String(member.plan) : "");
+  const [dietId, setDietId] = useState(member.diet != null ? String(member.diet) : "");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [modeOfPayment, setModeOfPayment] = useState("cash");
@@ -375,12 +389,18 @@ function RenewModal({ member, plans, dietPlans = [], onClose, onSave }) {
   const [dietBase, setDietBase] = useState(0);   // base diet amount (pre-GST) from gym settings
   const [gstRate, setGstRate] = useState(18);
   const [userEdited, setUserEdited] = useState(false);
+  const [dietPlans, setDietPlans] = useState(initialDietPlans || []);
 
   useEffect(() => {
     api.get("/finances/gym-settings/").then(r => {
       const s = r.data || {};
       if (s.DIET_PLAN_AMOUNT != null) setDietBase(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
       if (s.GST_RATE != null) setGstRate(parseFloat(s.GST_RATE) || 18);
+    }).catch(() => {});
+    // Refresh diet plan list on modal open so newly created plans are available
+    api.get("/members/diet-plans/").then(r => {
+      const data = Array.isArray(r.data) ? r.data : (r.data?.results ?? []);
+      setDietPlans(data);
     }).catch(() => {});
   }, []);
 

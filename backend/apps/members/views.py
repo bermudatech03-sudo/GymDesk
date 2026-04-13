@@ -1033,6 +1033,46 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             ),
         )
 
+        # ── Send updated PT bill on WhatsApp ─────────────────────────────────
+        from apps.notifications.whatsapp import send_bill_on_whatsapp
+        gym = _gym_info()
+        trainer = assignment.trainer
+        bill_data = {
+            "invoice_number":  renewal.invoice_number,
+            "bill_type":       "PT Renewal",
+            "member_id":       member.display_id(),
+            "member_name":     member.name,
+            "phone":           member.phone,
+            "email":           member.email,
+            "trainer_name":    trainer.name,
+            "trainer_id":      f"S{trainer.id:04d}",
+            "plan_name":       member.plan.name if member.plan else "",
+            "plan_valid_to":   str(member.renewal_date),
+            "pt_start_date":   str(renewal.pt_start_date),
+            "pt_end_date":     str(renewal.pt_end_date),
+            "pt_days":         renewal.pt_days,
+            "full_pt_days":    30,
+            "base_amount":     float(renewal.base_amount),
+            "gst_rate":        float(renewal.gst_rate),
+            "gst_amount":      float(renewal.gst_amount),
+            "total_amount":    float(renewal.total_amount),
+            "amount_paid":     float(renewal.amount_paid),
+            "balance":         float(max(renewal.total_amount - renewal.amount_paid, Decimal("0"))),
+            "status":          renewal.status,
+            "mode_of_payment": mode_of_payment,
+            "date":            str(today),
+            "gym_name":        gym["name"],
+            "gym_address":     gym["address"],
+            "gym_phone":       gym["phone"],
+            "gym_email":       gym["email"],
+            "gym_gstin":       gym["gstin"],
+            "notes":           notes,
+        }
+        phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+        if phone and not phone.startswith("91"):
+            phone = f"91{phone}"
+        send_bill_on_whatsapp(phone, bill_data, "pt_balance")
+
         return Response(TrainerAssignmentSerializer(assignment).data)
 
     @action(detail=True, methods=["get"], url_path="pt-renewal-preview")
@@ -1257,6 +1297,13 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
             "gym_gstin":       gym["gstin"],
             "notes":           notes,
         }
+
+        # ── Send PT bill on WhatsApp ──────────────────────────────────────────
+        from apps.notifications.whatsapp import send_bill_on_whatsapp
+        phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
+        if phone and not phone.startswith("91"):
+            phone = f"91{phone}"
+        send_bill_on_whatsapp(phone, bill_data, "pt_renewal")
 
         return Response({
             **TrainerAssignmentSerializer(assignment).data,

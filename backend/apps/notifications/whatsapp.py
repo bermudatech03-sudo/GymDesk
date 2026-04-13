@@ -311,6 +311,223 @@ def _build_bill_html(bill: dict) -> str:
 """
 
 
+_PT_BILL_CSS = """
+@page { size: A4; margin: 15mm; }
+body  { font-family: Helvetica, Arial, sans-serif; color: #111; font-size: 11px; }
+.header { background: #1a1a2e; color: #fff; padding: 18px; text-align: center; }
+.gym-name { font-size: 20px; font-weight: bold; letter-spacing: 1px; }
+.gym-sub  { font-size: 10px; color: #cfcfe0; margin-top: 4px; }
+.gym-gstin{ display: inline-block; margin-top: 6px; background: #2a2a4e; color: #a8ff57;
+            border: 1px solid #a8ff57; padding: 2px 10px; font-size: 9px; font-weight: bold; }
+.doc-title { background: #a8ff57; color: #08080a; text-align: center; padding: 8px;
+             font-size: 12px; font-weight: bold; letter-spacing: 3px; }
+.body-pad { padding: 14px 4px 4px 4px; }
+.meta { width: 100%; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px; }
+.meta td { vertical-align: top; }
+.inv-no   { font-size: 12px; font-weight: bold; color: #444; }
+.inv-date { font-size: 10px; color: #888; }
+.badge { display: inline-block; padding: 3px 12px; font-size: 10px; font-weight: bold;
+         letter-spacing: 1px; border: 1px solid; }
+.s-paid    { background: #e8fff0; color: #1a7a00; border-color: #b0e0c0; }
+.s-partial { background: #fff8e0; color: #a06000; border-color: #e0c070; }
+.s-pending { background: #fff0f0; color: #cc0000; border-color: #f0c0c0; }
+.section-label { font-size: 9px; font-weight: bold; text-transform: uppercase;
+                 letter-spacing: 1px; color: #888; margin-bottom: 4px; }
+.member-card { background: #f9f9f9; padding: 10px 12px; margin-bottom: 10px; }
+.member-name { font-size: 15px; font-weight: bold; color: #111; }
+.member-meta { font-size: 10px; color: #666; margin-top: 3px; }
+.member-id   { background: #e8f0ff; color: #1a3a9a; padding: 1px 6px;
+               font-family: monospace; font-size: 10px; font-weight: bold; }
+.pt-box { background: #f0f8ff; border: 1px solid #b0d8f0; padding: 10px 12px; margin-bottom: 10px; }
+.pt-title { font-size: 12px; font-weight: bold; color: #0a4a7a; margin-bottom: 4px; }
+.pt-dates { font-size: 11px; color: #1a5a8a; }
+.pt-days-badge { display: inline-block; background: #1a5a8a; color: #fff;
+                 padding: 2px 8px; font-size: 10px; font-weight: bold; margin-left: 4px; }
+.billing-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.billing-table td { padding: 6px 4px; border-bottom: 1px solid #f0f0f0; font-size: 11px; }
+.billing-table .lbl { color: #555; }
+.billing-table .val { text-align: right; }
+.b-gst .val   { color: #e05000; }
+.b-total      { background: #f4f4f4; }
+.b-total .lbl { font-size: 12px; font-weight: bold; color: #111; }
+.b-total .val { font-size: 14px; font-weight: bold; color: #111; }
+.b-paid .val  { color: #1a7a00; font-weight: bold; }
+.b-bal  .val  { color: #cc0000; font-weight: bold; }
+.prorated-note { background: #fff8e8; border: 1px solid #f0d090; padding: 8px 12px;
+                 margin-bottom: 10px; font-size: 10px; color: #8a5000; }
+.footer { text-align: center; padding: 12px; border-top: 1px solid #eee;
+          font-size: 9px; color: #999; margin-top: 14px; }
+.footer strong { color: #555; }
+"""
+
+
+def _pt_bill_status_badge(bill: dict) -> str:
+    status = bill.get("status", "pending")
+    if status == "paid":
+        return '<span class="badge s-paid">&#10003; PAID</span>'
+    if status == "partial":
+        return '<span class="badge s-partial">&#9888; PARTIAL</span>'
+    return '<span class="badge s-pending">&#9203; PENDING</span>'
+
+
+def _build_pt_bill_html(bill: dict) -> str:
+    """
+    Build PT Renewal receipt HTML for xhtml2pdf, mirroring the frontend buildPtBillHtml layout.
+    """
+    gym_name    = bill.get("gym_name") or "Gym"
+    gym_address = bill.get("gym_address") or ""
+    gym_phone   = bill.get("gym_phone") or ""
+    gym_email   = bill.get("gym_email") or ""
+    gym_gstin   = bill.get("gym_gstin") or ""
+
+    contact_parts = []
+    if gym_phone: contact_parts.append(gym_phone)
+    if gym_email: contact_parts.append(gym_email)
+    contact_line = " | ".join(contact_parts)
+
+    header_html = f"""
+    <div class="header">
+      <div class="gym-name">{gym_name}</div>
+      <div class="gym-sub">
+        {gym_address}{'<br/>' if gym_address else ''}
+        {contact_line}
+      </div>
+      {f'<div class="gym-gstin">GSTIN: {gym_gstin}</div>' if gym_gstin else ''}
+    </div>
+    """
+
+    meta_html = f"""
+    <table class="meta" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <div class="inv-no">Invoice: {bill.get('invoice_number', '—')}</div>
+        <div class="inv-date">Date: {bill.get('date', '')}</div>
+      </td>
+      <td style="text-align: right;">{_pt_bill_status_badge(bill)}</td>
+    </tr></table>
+    """
+
+    member_html = f"""
+    <div class="member-card">
+      <div class="section-label">Member</div>
+      <div class="member-name">{bill.get('member_name', '')}</div>
+      <div class="member-meta">
+        ID: <span class="member-id">{bill.get('member_id', '')}</span>
+        {f" &nbsp;|&nbsp; {bill.get('phone', '')}" if bill.get('phone') else ''}
+        {f"<br/>{bill.get('email', '')}" if bill.get('email') else ''}
+        <br/>Plan: <strong>{bill.get('plan_name', '—')}</strong>
+        &nbsp;|&nbsp; Plan valid till: <strong>{bill.get('plan_valid_to', '')}</strong>
+        <br/>Trainer: <strong>{bill.get('trainer_name', '')}</strong> ({bill.get('trainer_id', '')})
+      </div>
+    </div>
+    """
+
+    pt_box_html = f"""
+    <div class="pt-box">
+      <div class="pt-title">Personal Training Period</div>
+      <div class="pt-dates">
+        Start: <strong>{bill.get('pt_start_date', '')}</strong>
+        &nbsp;&rarr;&nbsp; End: <strong>{bill.get('pt_end_date', '')}</strong>
+        <span class="pt-days-badge">{bill.get('pt_days', '')} days</span>
+      </div>
+    </div>
+    """
+
+    pt_days = int(bill.get("pt_days") or 0)
+    full_pt_days = int(bill.get("full_pt_days") or 30)
+    prorated_html = ""
+    if pt_days < full_pt_days:
+        prorated_html = f"""
+        <div class="prorated-note">
+          <strong>Prorated PT Fee:</strong> Only {pt_days} days remain in the membership plan.
+          Fee calculated as {pt_days}/{full_pt_days} of the full monthly PT fee.
+        </div>
+        """
+
+    gst_rate = float(bill.get("gst_rate") or 0)
+    balance  = float(bill.get("balance") or 0)
+
+    bal_row = ""
+    if balance > 0:
+        bal_row = f"""
+        <tr class="b-bal">
+          <td class="lbl">Balance Due</td>
+          <td class="val">&#8377;{_fmt_money(balance)}</td>
+        </tr>
+        """
+
+    billing_html = f"""
+    <div class="section-label">Invoice Breakdown</div>
+    <table class="billing-table" cellpadding="0" cellspacing="0">
+      <tr>
+        <td class="lbl">PT Base Fee ({pt_days} days)</td>
+        <td class="val">&#8377;{_fmt_money(bill.get('base_amount'))}</td>
+      </tr>
+      <tr class="b-gst">
+        <td class="lbl">GST ({gst_rate}%)</td>
+        <td class="val">&#8377;{_fmt_money(bill.get('gst_amount'))}</td>
+      </tr>
+      <tr class="b-total">
+        <td class="lbl">Total Amount</td>
+        <td class="val">&#8377;{_fmt_money(bill.get('total_amount'))}</td>
+      </tr>
+      <tr class="b-paid">
+        <td class="lbl">Amount Paid</td>
+        <td class="val">&#8377;{_fmt_money(bill.get('amount_paid'))}</td>
+      </tr>
+      {bal_row}
+    </table>
+    """
+
+    mode_html = ""
+    if bill.get("mode_of_payment"):
+        mode_html = f'<div style="font-size:10px;color:#888;margin-bottom:10px;">Mode of Payment: <strong style="color:#555">{bill["mode_of_payment"].upper()}</strong></div>'
+
+    notes_html = ""
+    if bill.get("notes"):
+        notes_html = f'<div style="font-size:10px;color:#888;margin-bottom:10px;background:#f5f5f5;padding:6px 10px;">Note: {bill["notes"]}</div>'
+
+    footer_html = f"""
+    <div class="footer">
+      Thank you for your continued commitment to your fitness journey!<br/>
+      <strong>{gym_name}</strong> — This is a computer-generated receipt.
+    </div>
+    """
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>PT Renewal Receipt — {bill.get('member_name', '')}</title>
+  <style>{_PT_BILL_CSS}</style>
+</head>
+<body>
+  {header_html}
+  <div class="doc-title">PERSONAL TRAINING RENEWAL RECEIPT</div>
+  <div class="body-pad">
+    {meta_html}
+    {member_html}
+    {pt_box_html}
+    {prorated_html}
+    {billing_html}
+    {mode_html}
+    {notes_html}
+  </div>
+  {footer_html}
+</body>
+</html>
+"""
+
+
+def generate_pt_bill_pdf(bill: dict) -> bytes:
+    """Render PT bill HTML to PDF bytes using xhtml2pdf."""
+    html = _build_pt_bill_html(bill)
+    buffer = io.BytesIO()
+    result = pisa.CreatePDF(src=html, dest=buffer, encoding="utf-8")
+    if result.err:
+        raise RuntimeError(f"xhtml2pdf failed with {result.err} errors")
+    return buffer.getvalue()
+
+
 def generate_bill_pdf(bill: dict) -> bytes:
     """
     Render the bill HTML to PDF bytes using xhtml2pdf.
@@ -400,11 +617,13 @@ def send_bill_on_whatsapp(phone: str, bill: dict, trigger_type: str) -> None:
         logger.warning("send_bill_on_whatsapp: no bill data, skipping.")
         return
 
-    logger.info(f"send_bill_on_whatsapp: amount_paid={bill.get('amount_paid')}, balance={bill.get('balance')}, total={bill.get('total_with_gst')}")
+    total = bill.get('total_with_gst') or bill.get('total_amount')
+    logger.info(f"send_bill_on_whatsapp: amount_paid={bill.get('amount_paid')}, balance={bill.get('balance')}, total={total}")
 
     # Step 1: generate PDF
+    is_pt = trigger_type in ("pt_renewal", "pt_balance")
     try:
-        pdf_bytes = generate_bill_pdf(bill)
+        pdf_bytes = generate_pt_bill_pdf(bill) if is_pt else generate_bill_pdf(bill)
     except Exception as e:
         logger.error(f"Bill PDF generation failed: {e}")
         return
@@ -418,11 +637,13 @@ def send_bill_on_whatsapp(phone: str, bill: dict, trigger_type: str) -> None:
 
     # Step 3: send document
     caption_map = {
-        "enrollment": f"Welcome {bill.get('member_name', '')}! Your membership bill is attached.",
-        "renewal":    f"Hi {bill.get('member_name', '')}! Your renewal bill is attached.",
-        "balance":    f"Hi {bill.get('member_name', '')}! Your updated bill after the balance payment is attached.",
+        "enrollment":  f"Welcome {bill.get('member_name', '')}! Your membership bill is attached.",
+        "renewal":     f"Hi {bill.get('member_name', '')}! Your renewal bill is attached.",
+        "balance":     f"Hi {bill.get('member_name', '')}! Your updated bill after the balance payment is attached.",
+        "pt_renewal":  f"Hi {bill.get('member_name', '')}! Your personal training renewal receipt is attached.",
+        "pt_balance":  f"Hi {bill.get('member_name', '')}! Your updated PT receipt after the balance payment is attached.",
     }
-    caption = caption_map.get(trigger_type, "Your gym membership bill is attached.")
+    caption = caption_map.get(trigger_type, "Your gym bill is attached.")
     send_whatsapp_document(
         to       = phone,
         media_id = upload["media_id"],

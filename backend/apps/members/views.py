@@ -264,6 +264,7 @@ class MemberViewSet(viewsets.ModelViewSet):
             email=d.get("email",""), gender=d.get("gender",""),
             address=d.get("address",""), plan=plan, diet=diet,
             join_date=join, renewal_date=renew,
+            joining_date=d.get("joining_date") or join,
             status=d.get("status","active"), notes=d.get("notes",""),
             plan_type=plan_type,
             personal_trainer=d.get("personal_trainer", False),

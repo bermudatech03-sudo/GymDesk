@@ -42,6 +42,7 @@ export default function Attendance() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      console.log(`Loading attendance data for tab=${tab}, date=${date}, month=${month}, year=${year}`);
       if (tab === "today") {
         const [m, s] = await Promise.all([
           api.get(`/members/attendance-log/?date=${date}&ordering=-check_in`),

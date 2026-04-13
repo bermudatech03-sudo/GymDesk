@@ -18,13 +18,15 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
   // Coerce plan/diet to strings so React <select> matches <option> values correctly
   const [form, setForm] = useState(member
     ? {
-        ...member,
-        plan: member.plan != null ? String(member.plan) : "",
-        diet: member.diet != null ? String(member.diet) : "",
-        plan_type: member.plan_type || "basic",
-      }
+      ...member,
+      plan: member.plan != null ? String(member.plan) : "",
+      diet: member.diet != null ? String(member.diet) : "",
+      plan_type: member.plan_type || "basic",
+      joining_date: member.joining_date,
+    }
     : {
       name: "", phone: "", email: "", gender: "", plan: "", plan_type: "basic", diet: "",
+      joining_date: new Date().toISOString().slice(0, 10),
       renewal_date: "", notes: "", status: "active", amount_paid: "", foodType: "veg", personal_trainer: false,
       mode_of_payment: "cash"
     }
@@ -42,12 +44,12 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
       const s = r.data || {};
       if (s.DIET_PLAN_AMOUNT != null) setDietBaseAmt(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
       if (s.GST_RATE != null) setGymGstRate(parseFloat(s.GST_RATE) || 18);
-    }).catch(() => {});
+    }).catch(() => { });
     // Always pull a fresh copy of diet plans when the modal opens
     api.get("/members/diet-plans/").then(r => {
       const data = Array.isArray(r.data) ? r.data : (r.data?.results ?? []);
       setDietPlans(data);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const selectedPlan = plans.find(p => String(p.id) === String(form.plan));
@@ -141,6 +143,7 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
             personal_trainer: true,
             amount_paid: form.amount_paid || 0,
             mode_of_payment: form.mode_of_payment || "cash",
+            joining_date: form.joining_date || undefined,
             renewal_date: form.renewal_date || undefined,
             status: form.status || "active",
           }));
@@ -274,7 +277,19 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
                 </select>
               </div>
             )}
-
+            {!isEdit ? (
+              <div className="form-group">
+                <label className="form-label">Joining Date</label>
+                <input className="form-input" type="date" value={form.joining_date}
+                  onChange={e => set("joining_date", e.target.value)} />
+              </div>
+            ) : (
+              <div className="form-group">
+                <label className="form-label">Joining Date</label>
+                <input className="form-input" type="date" value={form.joining_date}
+                  onChange={e => set("joining_date", e.target.value)} />
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Renewal Date</label>
               <input className="form-input" type="date" value={form.renewal_date || ""}
@@ -396,12 +411,12 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
       const s = r.data || {};
       if (s.DIET_PLAN_AMOUNT != null) setDietBase(parseFloat(s.DIET_PLAN_AMOUNT) || 0);
       if (s.GST_RATE != null) setGstRate(parseFloat(s.GST_RATE) || 18);
-    }).catch(() => {});
+    }).catch(() => { });
     // Refresh diet plan list on modal open so newly created plans are available
     api.get("/members/diet-plans/").then(r => {
       const data = Array.isArray(r.data) ? r.data : (r.data?.results ?? []);
       setDietPlans(data);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const activePlan =
@@ -665,17 +680,17 @@ function PaymentHistoryModal({ member, onClose, onRefresh, onBill, gymInfo = {} 
         </div>
 
         {/* Summary row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
+        <div className="payment-summary-row">
           {[
-            { label: "Total Billed", val: `₹${totalDue.toLocaleString("en-IN")}`, color: "var(--text1)" },
-            { label: "Total Paid", val: `₹${totalPaid.toLocaleString("en-IN")}`, color: "var(--accent)" },
-            { label: "Balance Due", val: `₹${totalBal.toLocaleString("en-IN")}`, color: totalBal > 0 ? "var(--warn)" : "var(--teal)" },
+            { label: "Total Billed", val: `₹${totalDue.toLocaleString("en-IN")}`, color: "var(--text1)", cls: "" },
+            { label: "Total Paid", val: `₹${totalPaid.toLocaleString("en-IN")}`, color: "var(--accent)", cls: "" },
+            { label: "Balance Due", val: `₹${totalBal.toLocaleString("en-IN")}`, color: totalBal > 0 ? "var(--warn)" : "var(--teal)", cls: totalBal > 0 ? "payment-summary-card--alert" : "" },
           ].map(c => (
-            <div key={c.label} style={{ background: "var(--surface2)", borderRadius: 8, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: .5 }}>
+            <div key={c.label} className={`payment-summary-card ${c.cls}`}>
+              <div className="payment-summary-card__label">
                 {c.label}
               </div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: c.color }}>
+              <div className="payment-summary-card__value" style={{ color: c.color }}>
                 {c.val}
               </div>
             </div>
@@ -926,10 +941,10 @@ function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCa
 /* ─── Diet Upgrade Modal (standard → premium) ─────── */
 function DietUpgradeModal({ memberId, onClose, onBill }) {
   const [dietBase, setDietBase] = useState(0);
-  const [gstRate, setGstRate]   = useState(18);
-  const [amount, setAmount]     = useState("");
-  const [mode, setMode]         = useState("cash");
-  const [saving, setSaving]     = useState(false);
+  const [gstRate, setGstRate] = useState(18);
+  const [amount, setAmount] = useState("");
+  const [mode, setMode] = useState("cash");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get("/finances/gym-settings/").then(r => {
@@ -939,11 +954,11 @@ function DietUpgradeModal({ memberId, onClose, onBill }) {
       setDietBase(base);
       setGstRate(rate);
       setAmount((base * (1 + rate / 100)).toFixed(2));
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const dietWithGst = parseFloat((dietBase * (1 + gstRate / 100)).toFixed(2));
-  const balance     = Math.max(0, dietWithGst - parseFloat(amount || 0));
+  const balance = Math.max(0, dietWithGst - parseFloat(amount || 0));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -955,22 +970,22 @@ function DietUpgradeModal({ memberId, onClose, onBill }) {
       });
       toast.success("Diet plan fee recorded!");
       if (res.data.bill) {
-        const raw      = res.data.bill;
-        const dietB    = parseFloat(raw.diet_plan_amount || 0);
-        const gstAmt   = parseFloat((dietB * raw.gst_rate / 100).toFixed(2));
+        const raw = res.data.bill;
+        const dietB = parseFloat(raw.diet_plan_amount || 0);
+        const gstAmt = parseFloat((dietB * raw.gst_rate / 100).toFixed(2));
         const addTotal = parseFloat((dietB + gstAmt).toFixed(2));
-        const paid     = Math.min(parseFloat(amount || 0), addTotal);
-        const bal      = parseFloat(Math.max(0, addTotal - paid).toFixed(2));
+        const paid = Math.min(parseFloat(amount || 0), addTotal);
+        const bal = parseFloat(Math.max(0, addTotal - paid).toFixed(2));
         onBill({
           ...raw,
           is_diet_upgrade: true,
-          membership_fee:  0,
-          pt_fee:          0,
-          plan_price:      dietB,
-          gst_amount:      gstAmt,
-          total_with_gst:  addTotal,
-          amount_paid:     paid,
-          balance:         bal,
+          membership_fee: 0,
+          pt_fee: 0,
+          plan_price: dietB,
+          gst_amount: gstAmt,
+          total_with_gst: addTotal,
+          amount_paid: paid,
+          balance: bal,
         });
       } else onClose();
     } catch (err) {

@@ -110,8 +110,9 @@ class EnrollSerializer(serializers.Serializer):
     address      = serializers.CharField(required=False, allow_blank=True)
     plan_id      = serializers.IntegerField(required=False, allow_null=True)
     diet_id      = serializers.IntegerField(required=False, allow_null=True)
-    join_date    = serializers.DateField(required=False)
-    renewal_date = serializers.DateField(required=False, allow_null=True)
+    join_date     = serializers.DateField(required=False)
+    joining_date  = serializers.DateField(required=False, allow_null=True)
+    renewal_date  = serializers.DateField(required=False, allow_null=True)
     amount_paid  = serializers.DecimalField(max_digits=10, decimal_places=2,
                        required=False, default=0)
     notes             = serializers.CharField(required=False, allow_blank=True)

@@ -36,8 +36,8 @@ def start():
     scheduler.add_job(
         send_message_for_absentees,
         trigger = "cron",
-        hour = 9,
-        minute = 5,
+        hour = 23,
+        minute = 30,
         id="send_message_for_absentees",
         replace_existing=True,
     )

@@ -8,7 +8,7 @@
 
 /* ── Modal shell ──────────────────────────────────────── */
 .report-modal {
-  max-width: 940px;
+  max-width: 1200px;
   width: 96vw;
   max-height: 90vh;
   overflow-y: auto;
@@ -227,16 +227,16 @@
 
 /* ── Income table — fixed column widths ─────────────── */
 /* 10 columns: Date · Invoice · Source · Category · Base · GST% · GST Amt · Plan Total · Paid Now · Mode */
-.income-table col.col-date  { width: 7%;  }
-.income-table col.col-inv   { width: 9%;  }
-.income-table col.col-src   { width: 14%; }
-.income-table col.col-cat   { width: 11%; }
+.income-table col.col-date  { width: 10%; }
+.income-table col.col-inv   { width: 12%; }
+.income-table col.col-src   { width: 12%; }
+.income-table col.col-cat   { width: 10%; }
 .income-table col.col-base  { width: 10%; }
-.income-table col.col-gp    { width: 5%;  }
-.income-table col.col-gamt  { width: 10%; }
-.income-table col.col-plan  { width: 12%; }
+.income-table col.col-gp    { width: 8%;  }
+.income-table col.col-gamt  { width: 9%;  }
+.income-table col.col-plan  { width: 10%; }
 .income-table col.col-paid  { width: 11%; }
-.income-table col.col-mode  { width: 11%; }
+.income-table col.col-mode  { width: 8%;  }
 
 /* ── Expense table — fixed column widths ────────────── */
 /* 5 columns: Date · Description · Category · Vendor · Amount */

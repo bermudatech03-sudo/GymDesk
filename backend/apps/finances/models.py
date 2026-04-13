@@ -13,6 +13,7 @@ EXPENSE_CATEGORIES = [
     ("salary","Staff Salary"),
     ("equipment","Equipment Purchase/Repair"),
     ("rent","Rent & Utilities"),
+    ("to-buy","To-Buy Items"),
     ("supplies","Supplies"),
     ("marketing","Marketing"),
     ("maintenance","Maintenance"),

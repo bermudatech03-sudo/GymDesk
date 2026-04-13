@@ -754,7 +754,7 @@ export default function Finances() {
         <ToBuyModal
           item={toBuyModal==="add" ? null : toBuyModal}
           onClose={()=>setToBuyModal(null)}
-          onSave={()=>{ setToBuyModal(null); loadToBuy(); }}
+          onSave={()=>{ setToBuyModal(null); loadToBuy(); load(); }}
         />
       )}
       {affordResult && (

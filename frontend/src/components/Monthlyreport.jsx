@@ -10,14 +10,6 @@ import "./Monthlyreport.css";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const CAT_LABELS = {
-  membership: "Membership", personal_training: "Personal Training",
-  merchandise: "Merchandise", locker: "Locker Rental",
-  salary: "Staff Salary", equipment: "Equipment",
-  rent: "Rent & Utilities", supplies: "Supplies",
-  marketing: "Marketing", maintenance: "Maintenance", other: "Other",
-};
-
 export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
   const now = new Date();
   const [month, setMonth] = useState(defaultMonth || now.getMonth() + 1);
@@ -41,9 +33,9 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
 <title>Finance Report ${MONTHS[month - 1]} ${year}</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
+  *{margin:0;padding:0;box-sizing: border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f4f4;padding:32px 16px;color:#111;font-size:13px}
-  .rp{max-width:860px;margin:0 auto;background:#fff;border-radius:10px;
+  .rp{max-width:1200px;margin:0 auto;background:#fff;border-radius:10px;
       box-shadow:0 4px 20px rgba(0,0,0,.1);overflow:hidden}
   .rp-body{padding:28px 24px}
   .rp-header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;padding:24px 24px}
@@ -82,16 +74,16 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
   .rp-table .total-row td{font-weight:800;background:#f0f0f0;border-top:2px solid #ccc;
     border-bottom:none;font-size:12px}
   .rp-table tbody tr:hover td{background:#fafafa}
-  /* income table col widths — 10 cols */
-  .income-table col.col-date{width:7%}.income-table col.col-inv{width:9%}
-  .income-table col.col-src{width:14%}.income-table col.col-cat{width:11%}
-  .income-table col.col-base{width:10%}.income-table col.col-gp{width:5%}
-  .income-table col.col-gamt{width:10%}.income-table col.col-plan{width:12%}
-  .income-table col.col-paid{width:11%}.income-table col.col-mode{width:11%}
+  /* income table col widths — 9 cols */
+  .income-table col.col-date{width:11%}.income-table col.col-inv{width:13%}
+  .income-table col.col-src{width:15%}
+  .income-table col.col-base{width:11%}.income-table col.col-gp{width:9%}
+  .income-table col.col-gamt{width:10%}.income-table col.col-plan{width:11%}
+  .income-table col.col-paid{width:12%}.income-table col.col-mode{width:8%}
   /* expense table col widths */
-  .expense-table col.col-date{width:10%}.expense-table col.col-desc{width:32%}
-  .expense-table col.col-cat{width:20%}.expense-table col.col-vendor{width:24%}
-  .expense-table col.col-amt{width:14%}
+  .expense-table col.col-date{width:12%}.expense-table col.col-desc{width:40%}
+  .expense-table col.col-vendor{width:30%}
+  .expense-table col.col-amt{width:18%}
   /* GST summary table */
   .gst-table{width:100%;border-collapse:collapse;font-size:13px;max-width:420px}
   .gst-table td{padding:9px 14px;border-bottom:1px solid #eee;color:#333}
@@ -176,7 +168,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
     const gymName = report.gym?.name || "Gym";
 
     // ── INCOME SHEET ──────────────────────────────────────────────────────
-    const incHdrs = ["Date", "Invoice", "Source", "Category", "Base Amount", "GST %", "GST Amt", "Plan Total", "Amt Paid", "Mode"];
+    const incHdrs = ["Date", "Invoice", "Source", "Base Amount", "GST %", "GST Amt", "Plan Total", "Amt Paid", "Mode"];
     const incData = report.incomes || [];
 
     const incRows2d = [
@@ -192,7 +184,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
           { v: i.date, s: dataStyle(bg) },
           { v: i.invoice_number || "—", s: dataStyle(bg, false, "555555") },
           { v: i.source, s: dataStyle(bg, false, "333333", "left") },
-          { v: CAT_LABELS[i.category] || i.category, s: dataStyle(bg) },
           { v: Number(i.base_amount || 0), s: numStyle(bg), numFmt: '₹#,##0.00' },
           { v: Number(i.gst_rate || 0), s: dataStyle(bg, false, "CC5500", "center") },
           { v: Number(i.gst_amount || 0), s: numStyle(bg), numFmt: '₹#,##0.00' },
@@ -205,7 +196,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
       [
         { v: "TOTAL", s: totalStyle() },
         { v: "", s: totalStyle() },
-        { v: "", s: totalStyle() },
         { v: `${incData.length} transaction${incData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
         { v: Number(report.total_base || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
@@ -215,13 +205,13 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
         { v: "", s: totalStyle() },
       ],
     ];
-    const wsIncome = buildSheet(incRows2d, [11, 13, 22, 16, 13, 7, 12, 13, 12, 10]);
+    const wsIncome = buildSheet(incRows2d, [11, 13, 22, 13, 7, 12, 13, 12, 10]);
     // Merge title row across all columns
     wsIncome["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: incHdrs.length - 1 } }];
     wsIncome["!freeze"] = { xSplit: 0, ySplit: 2 };  // freeze title + header
 
     // ── EXPENSE SHEET ─────────────────────────────────────────────────────
-    const expHdrs = ["Date", "Description", "Category", "Vendor", "Amount"];
+    const expHdrs = ["Date", "Description", "Vendor", "Amount"];
     const expData = report.expenses || [];
 
     const expRows2d = [
@@ -233,7 +223,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
         return [
           { v: e.date, s: dataStyle(bg) },
           { v: e.description, s: dataStyle(bg, false, "333333", "left") },
-          { v: CAT_LABELS[e.category] || e.category, s: dataStyle(bg) },
           { v: e.vendor || "—", s: dataStyle(bg, false, "555555") },
           { v: Number(e.amount || 0), s: numStyle(bg, false, "CC0000"), numFmt: '₹#,##0.00' },
         ];
@@ -241,12 +230,11 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
       [
         { v: "TOTAL", s: totalStyle() },
         { v: "", s: totalStyle() },
-        { v: "", s: totalStyle() },
         { v: `${expData.length} transaction${expData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
         { v: Number(report.total_expense || 0), s: totalStyle("CC0000"), numFmt: '₹#,##0.00' },
       ],
     ];
-    const wsExpense = buildSheet(expRows2d, [11, 32, 18, 20, 14]);
+    const wsExpense = buildSheet(expRows2d, [11, 36, 24, 14]);
     wsExpense["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: expHdrs.length - 1 } }];
     wsExpense["!freeze"] = { xSplit: 0, ySplit: 2 };
 
@@ -384,7 +372,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                     <col className="col-date" />
                     <col className="col-inv" />
                     <col className="col-src" />
-                    <col className="col-cat" />
                     <col className="col-base" />
                     <col className="col-gp" />
                     <col className="col-gamt" />
@@ -397,7 +384,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <th>Date</th>
                       <th>Invoice</th>
                       <th>Source</th>
-                      <th>Category</th>
                       <th className="r">Base Amt</th>
                       <th className="c">GST %</th>
                       <th className="r">GST Amt</th>
@@ -412,9 +398,6 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                         <td>{i.date}</td>
                         <td className="mono">{i.invoice_number || "—"}</td>
                         <td title={i.source}>{i.source}</td>
-                        <td title={CAT_LABELS[i.category] || i.category}>
-                          {CAT_LABELS[i.category] || i.category}
-                        </td>
                         <td className="r s-green">
                           ₹{Number(i.base_amount || 0).toLocaleString("en-IN")}
                         </td>
@@ -446,7 +429,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       </tr>
                     ))}
                     <tr className="total-row">
-                      <td colSpan={4}>TOTAL INCOME</td>
+                      <td colSpan={3}>TOTAL INCOME</td>
                       <td className="r s-green">{fmt(report.total_base)}</td>
                       <td className="c">—</td>
                       <td className="r">{fmt(report.total_gst)}</td>
@@ -467,14 +450,13 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                 <table className="rp-table expense-table">
                   <colgroup>
                     <col className="col-date" /><col className="col-desc" />
-                    <col className="col-cat" /><col className="col-vendor" />
+                    <col className="col-vendor" />
                     <col className="col-amt" />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Date</th>
                       <th>Description</th>
-                      <th>Category</th>
                       <th>Vendor</th>
                       <th className="r">Amount</th>
                     </tr>
@@ -484,15 +466,12 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <tr key={e.id}>
                         <td>{e.date}</td>
                         <td title={e.description}>{e.description}</td>
-                        <td title={CAT_LABELS[e.category] || e.category}>
-                          {CAT_LABELS[e.category] || e.category}
-                        </td>
                         <td title={e.vendor || "—"}>{e.vendor || "—"}</td>
                         <td className="r s-red">₹{Number(e.amount).toLocaleString("en-IN")}</td>
                       </tr>
                     ))}
                     <tr className="total-row">
-                      <td colSpan={4}>TOTAL EXPENSES</td>
+                      <td colSpan={3}>TOTAL EXPENSES</td>
                       <td className="r s-red">{fmt(report.total_expense)}</td>
                     </tr>
                   </tbody>

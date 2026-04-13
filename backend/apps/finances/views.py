@@ -240,7 +240,7 @@ class ToBuyView(APIView):
             "created_at": item.created_at,
             "item_url": item.item_url,
         }
-
+    
     def get(self, request):
         from .models import ToBuy
         items = ToBuy.objects.all().order_by("-created_at")
@@ -282,6 +282,19 @@ class ToBuyView(APIView):
         item.notes     = data.get("notes",     item.notes)
         item.item_url  = data.get("item_url",  item.item_url)
         item.save()
+        print("Updated To-Buy item:", item.id, item.item_name, "Status:", item.status)
+        if item.status == "purchased":
+            print("Expected to create expenditure for purchased item.")
+            Expenditure.objects.create(
+                amount=item.price or 0,
+                category="to-buy",
+                description=item.item_name,
+                date=timezone.localdate(),
+                notes=f"Auto-generated from To-Buy list item ID {item.id}"
+            )
+            all_base_income = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
+            all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
+            net_savings     = all_base_income - all_expense
         return Response(self._serialize(item))
 
     def delete(self, request):

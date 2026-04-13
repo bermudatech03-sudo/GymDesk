@@ -97,3 +97,130 @@
   .stat-card { padding: 14px !important; }
   .stat-card .value { font-size: 22px !important; }
 }
+
+/* ══════════════════════════════════════════════════════
+   Mobile table → card / grid conversions
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Shared card-row base */
+  .salary-table-wrap,
+  .shift-assign-wrap,
+  .attendance-bulk-wrap,
+  .finance-table-wrap { overflow-x: visible !important; }
+
+  .salary-table-wrap table,
+  .shift-assign-wrap table,
+  .attendance-bulk-wrap table,
+  .finance-table-wrap table { display: block; width: 100%; }
+
+  .salary-table-wrap thead,
+  .shift-assign-wrap thead,
+  .attendance-bulk-wrap thead,
+  .finance-table-wrap thead { display: none; }
+
+  .salary-table-wrap tbody,
+  .shift-assign-wrap tbody,
+  .attendance-bulk-wrap tbody,
+  .finance-table-wrap tbody { display: flex; flex-direction: column; gap: 8px; }
+
+  .salary-table-wrap tr,
+  .shift-assign-wrap tr,
+  .attendance-bulk-wrap tr,
+  .finance-table-wrap tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    background: var(--surface);
+  }
+
+  .salary-table-wrap td,
+  .shift-assign-wrap td,
+  .attendance-bulk-wrap td,
+  .finance-table-wrap td {
+    font-size: 12px;
+    padding: 2px 0 !important;
+    border: none !important;
+    vertical-align: top;
+  }
+
+  /* All salary card cells centered */
+  .salary-table-wrap td { text-align: center !important; }
+
+  /* All to-buy card cells centered */
+  .tobuy-table-wrap td { text-align: center !important; }
+
+  /* Center the Edit/Del flex button group */
+  .tobuy-table-wrap td:nth-child(10) > div { justify-content: center; }
+
+  /* ── Salary table layout:
+       [Staff name        — full]
+       [Shift]  [Att %]
+       [Days P/A/L/OT    — full]
+       [Base Salary]  [Payable]
+       [Status           — full]
+       [Action           — full]            ── */
+  .salary-table-wrap td:nth-child(1)  { grid-column: 1 / -1; }  /* Staff name */
+  .salary-table-wrap td:nth-child(4)  { grid-column: 1 / -1; }  /* Days — full so Base+Payable pair below */
+  .salary-table-wrap td:nth-child(12) { grid-column: 1 / -1; }  /* Status */
+  .salary-table-wrap td:nth-child(13) { grid-column: 1 / -1; }  /* Action */
+  /* Billable Hrs full-width so 5 hour cols pair cleanly: Sched|Worked, Late|OT, Billable */
+  .salary-table-wrap td:nth-child(9) { grid-column: 1 / -1; text-align: center !important; }
+
+  /* ── Shift assign: staff name and assign dropdown → full width ── */
+  .shift-assign-wrap td:nth-child(1) { grid-column: 1 / -1; }
+  .shift-assign-wrap td:nth-child(4) { grid-column: 1 / -1; }
+
+  /* ── Attendance bulk modal: name and status → full width ── */
+  .attendance-bulk-wrap td:nth-child(1) { grid-column: 1 / -1; }
+  .attendance-bulk-wrap td:nth-child(3) { grid-column: 1 / -1; }
+
+  /* ── Finance: source/description/item name → full width ── */
+  .finance-table-wrap tr td:first-child { grid-column: 1 / -1; }
+
+  /* To-buy: budget check and actions → full width */
+  .tobuy-table-wrap td:nth-child(9)  { grid-column: 1 / -1; }
+  .tobuy-table-wrap td:nth-child(10) { grid-column: 1 / -1; }
+
+  /* ── Column labels via ::before (salary + to-buy only) ── */
+  .salary-table-wrap td::before,
+  .tobuy-table-wrap td::before {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+  }
+
+  /* Salary labels */
+  .salary-table-wrap td:nth-child(1)::before  { content: none; }
+  .salary-table-wrap td:nth-child(2)::before  { content: "Shift"; }
+  .salary-table-wrap td:nth-child(3)::before  { content: "Att %"; }
+  .salary-table-wrap td:nth-child(4)::before  { content: "Days P/A/L/OT"; }
+  .salary-table-wrap td:nth-child(5)::before  { content: "Sched Hrs"; }
+  .salary-table-wrap td:nth-child(6)::before  { content: "Worked Hrs"; }
+  .salary-table-wrap td:nth-child(7)::before  { content: "Late"; }
+  .salary-table-wrap td:nth-child(8)::before  { content: "OT"; }
+  .salary-table-wrap td:nth-child(9)::before  { content: "Billable Hrs"; }
+  .salary-table-wrap td:nth-child(10)::before { content: "Base Salary"; }
+  .salary-table-wrap td:nth-child(11)::before { content: "Payable"; }
+  .salary-table-wrap td:nth-child(12)::before { content: "Status"; }
+  .salary-table-wrap td:nth-child(13)::before { content: none; }
+
+  /* To-buy labels */
+  .tobuy-table-wrap td:nth-child(1)::before  { content: none; }
+  .tobuy-table-wrap td:nth-child(2)::before  { content: "Qty"; }
+  .tobuy-table-wrap td:nth-child(3)::before  { content: "Price"; }
+  .tobuy-table-wrap td:nth-child(4)::before  { content: "Priority"; }
+  .tobuy-table-wrap td:nth-child(5)::before  { content: "Status"; }
+  .tobuy-table-wrap td:nth-child(6)::before  { content: "Target Date"; }
+  .tobuy-table-wrap td:nth-child(7)::before  { content: "Notes"; }
+  .tobuy-table-wrap td:nth-child(8)::before  { content: "Link"; }
+  .tobuy-table-wrap td:nth-child(9)::before  { content: none; }
+  .tobuy-table-wrap td:nth-child(10)::before { content: none; }
+}

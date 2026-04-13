@@ -547,7 +547,10 @@ class MemberPaymentViewSet(viewsets.ModelViewSet):
 class MemberAttendanceViewSet(viewsets.ModelViewSet):
     queryset         = MemberAttendance.objects.select_related("member").all()
     serializer_class = MemberAttendanceSerializer
-    filterset_fields = ["member","date"]
+    filterset_fields = {
+        "member": ["exact"],
+        "date":   ["exact", "year", "month"],
+    }
     ordering_fields  = ["date","check_in"]
 
     def list(self, request, *args, **kwargs):

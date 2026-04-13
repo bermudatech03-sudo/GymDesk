@@ -445,7 +445,11 @@ class StaffViewSet(viewsets.ModelViewSet):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset         = StaffAttendance.objects.select_related("staff").all()
     serializer_class = AttendanceSerializer
-    filterset_fields = ["staff", "date", "status"]
+    filterset_fields = {
+        "staff":  ["exact"],
+        "date":   ["exact", "year", "month"],
+        "status": ["exact"],
+    }
     ordering_fields  = ["date"]
 
     def list(self, request, *args, **kwargs):

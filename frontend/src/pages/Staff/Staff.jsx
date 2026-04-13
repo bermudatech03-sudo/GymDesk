@@ -301,7 +301,7 @@ function ShiftsTab() {
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", fontWeight: 700, fontSize: 14 }}>
           Assign Shifts to Staff
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap shift-assign-wrap">
           <table>
             <thead><tr>
               <th>Staff</th><th>Role</th><th>Current Shift Template</th><th>Assign</th>
@@ -861,7 +861,7 @@ function AttendanceModal({ staffList, onClose, onSave }) {
           <input className="form-input" type="date" value={date}
             onChange={e => setDate(e.target.value)} style={{ maxWidth: 180, marginTop: 4 }} />
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap attendance-bulk-wrap">
           <table>
             <thead><tr>
               <th>Name</th><th>Role</th><th>Status</th><th>Check In</th><th>Check Out</th>
@@ -1069,7 +1069,7 @@ function PaymentsTab({ staffList }) {
         </div>
       ) : (
         <div className="card">
-          <div className="table-wrap">
+          <div className="table-wrap salary-table-wrap">
             <table>
               <thead>
                 <tr>

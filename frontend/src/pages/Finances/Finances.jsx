@@ -557,7 +557,7 @@ export default function Finances() {
               ₹{incTotal.toLocaleString("en-IN")}
             </b></span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap finance-table-wrap">
             <table>
               <thead><tr>
                 <th>Source</th><th>Category</th><th>Amount</th><th>Date</th><th>Notes</th>
@@ -611,7 +611,7 @@ export default function Finances() {
               ₹{expTotal.toLocaleString("en-IN")}
             </b></span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap finance-table-wrap">
             <table>
               <thead><tr>
                 <th>Description</th><th>Category</th><th>Amount</th>
@@ -665,7 +665,7 @@ export default function Finances() {
           {toBuyLoading ? (
             <div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>Loading…</div>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap finance-table-wrap tobuy-table-wrap">
               <table>
                 <thead><tr>
                   <th>Item</th><th>Qty</th><th>Price</th>

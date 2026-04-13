@@ -228,9 +228,7 @@
     .diet-page { padding: 16px; }
     .diet-stats { grid-template-columns: 1fr 1fr; }
     .diet-item-table-header,
-    .diet-item-row { grid-template-columns: 1fr 90px 80px; }
-    .diet-item-row .item-time { display: none; }
+    .diet-item-row { grid-template-columns: 1fr 80px 80px 65px; }
     .diet-item-row .item-notes { display: none; }
-    .diet-item-table-header span:nth-child(3) { display: none; }
     .diet-item-table-header span:nth-child(5) { display: none; }
 }

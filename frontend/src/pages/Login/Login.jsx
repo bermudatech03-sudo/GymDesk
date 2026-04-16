@@ -66,10 +66,6 @@ export default function Login() {
             {loading ? <span className="spin">⟳</span> : "Sign In →"}
           </button>
         </form>
-
-        <div className="login-hint">
-          Demo credentials: <code>admin</code> / <code>admin123</code>
-        </div>
       </div>
     </div>
   );

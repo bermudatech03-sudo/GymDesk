@@ -38,7 +38,8 @@ class FinanceSummaryView(APIView):
         total_gst     = inc.aggregate(t=Sum("gst_amount"))["t"] or 0
         total_base    = inc.aggregate(t=Sum("base_amount"))["t"] or 0
         total_expense = exp.aggregate(t=Sum("amount"))["t"] or 0
-
+        print(total_income)
+        print(total_gst)
         all_base_income = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
         all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
         net_savings     = all_base_income - all_expense
@@ -110,6 +111,9 @@ class MonthlyReportView(APIView):
 
         total_income   = incomes.aggregate(t=Sum("amount"))["t"]     or 0
         total_expense  = expenses.aggregate(t=Sum("amount"))["t"]    or 0
+        total_gst      = incomes.aggregate(t=Sum("gst_amount"))["t"] or 0
+
+        total_income_without_gst = total_income - total_gst
 
         gym = get_gym_info()
 
@@ -209,6 +213,7 @@ class MonthlyReportView(APIView):
             "net":           float(total_income - total_expense),
             "incomes":       merged_incomes,
             "expenses":      ExpenditureSerializer(expenses, many=True).data,
+            "total_income_without_gst": float(total_income_without_gst),
         })
 
 

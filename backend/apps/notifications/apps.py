@@ -11,7 +11,7 @@ class NotificationsConfig(AppConfig):
         if "test" in sys.argv:
             return
         
-        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
+        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv :
             from apps.notifications.scheduler import start
             start()
 

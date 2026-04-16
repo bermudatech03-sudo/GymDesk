@@ -4,13 +4,12 @@ import toast from "react-hot-toast";
 import ConfirmModal from "../../components/ConfirmModal";
 
 const STATUS_LABELS = {
-  new:       { label: "New",       cls: "badge-blue" },
-  followup:  { label: "Follow-up", cls: "badge-yellow" },
+  followup: { label: "Follow-up", cls: "badge-yellow" },
   converted: { label: "Converted", cls: "badge-green" },
-  lost:      { label: "Lost",      cls: "badge-gray" },
+  lost: { label: "Lost", cls: "badge-gray" },
 };
 
-const EMPTY_FORM = { name: "", phone: "", email: "", notes: "", status: "new" };
+const EMPTY_FORM = { name: "", phone: "", email: "", notes: "", status: "Follow-up" };
 
 function EnquiryModal({ enquiry, onClose, onSave }) {
   const isEdit = !!enquiry?.id;
@@ -83,15 +82,15 @@ function EnquiryModal({ enquiry, onClose, onSave }) {
 }
 
 export default function Enquiry() {
-  const [enquiries, setEnquiries]   = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [modal, setModal]           = useState(null); // null | "new" | enquiry obj
+  const [enquiries, setEnquiries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null); // null | "new" | enquiry obj
   const [confirmState, setConfirmState] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
-  const [search, setSearch]         = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
-    try { document.getElementById("page-title").textContent = "Enquiries"; } catch {}
+    try { document.getElementById("page-title").textContent = "Enquiries"; } catch { }
   }, []);
 
   const load = useCallback(async () => {
@@ -145,7 +144,7 @@ export default function Enquiry() {
           <h1 className="page-title">Enquiries</h1>
           <p className="page-sub">Track walk-in and call enquiries with automated WhatsApp follow-ups</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setModal("new")}>+ Add Enquiry</button>
+        <button className="btn btn-primary" onClick={() => setModal("Follow-up")}>+ Add Enquiry</button>
       </div>
 
       {/* Summary badges */}
@@ -183,7 +182,7 @@ export default function Enquiry() {
       {!loading && filtered.length > 0 && (
         <div className="mobile-card-list">
           {filtered.map(e => {
-            const s = STATUS_LABELS[e.status] || STATUS_LABELS.new;
+            const s = STATUS_LABELS[e.status] || STATUS_LABELS.followup;
             return (
               <div key={e.id} className="mobile-card">
                 <div className="mobile-card__left">
@@ -244,7 +243,7 @@ export default function Enquiry() {
             </thead>
             <tbody>
               {filtered.map((e, idx) => {
-                const s = STATUS_LABELS[e.status] || STATUS_LABELS.new;
+                const s = STATUS_LABELS[e.status] || STATUS_LABELS.followup;
                 return (
                   <tr key={e.id}>
                     <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{idx + 1}</td>
@@ -265,8 +264,10 @@ export default function Enquiry() {
                     <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                       {new Date(e.created_at).toLocaleDateString("en-IN")}
                     </td>
-                    <td style={{ maxWidth: 180, fontSize: 12, color: "var(--text-muted)",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td style={{
+                      maxWidth: 180, fontSize: 12, color: "var(--text-muted)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                    }}>
                       {e.notes || "—"}
                     </td>
                     <td>
@@ -285,7 +286,7 @@ export default function Enquiry() {
 
       {modal && (
         <EnquiryModal
-          enquiry={modal === "new" ? null : modal}
+          enquiry={modal === "Follow-up" ? null : modal}
           onClose={() => setModal(null)}
           onSave={() => { setModal(null); load(); }}
         />

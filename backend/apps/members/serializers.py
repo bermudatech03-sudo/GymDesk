@@ -2,8 +2,8 @@ from rest_framework import serializers
 from decimal import Decimal, ROUND_HALF_UP
 from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, MemberAttendance, InstallmentPayment, TrainerAssignment, PTRenewal
 from apps.finances.gst_utils import get_gst_rate as _get_gst_rate
-
-
+from .validators import is_valid_domain, is_valid_phone
+import phonenumbers
 def _gst_rate():
     return _get_gst_rate()
 
@@ -121,6 +121,15 @@ class EnrollSerializer(serializers.Serializer):
     personal_trainer  = serializers.BooleanField(required=False, default=False)
     mode_of_payment   = serializers.CharField(required=False, default="cash")
 
+    def validate_email(self, value):
+        print("Output: ",is_valid_domain(value))
+        if not is_valid_domain(value):
+            raise serializers.ValidationError("Invalid email domain")
+        return value
+    
+
+    def validate_phone(self, value):
+        return is_valid_phone(value)
 
 class RenewSerializer(serializers.Serializer):
     plan_id     = serializers.IntegerField(required=False, allow_null=True)

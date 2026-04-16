@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.core.validators import MinValueValidator
 
 INCOME_CATEGORIES = [
     ("membership","Membership Fee"),
@@ -26,7 +27,7 @@ class Income(models.Model):
     base_amount    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     gst_rate       = models.DecimalField(max_digits=5,  decimal_places=2, default=0)
     gst_amount     = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    amount         = models.DecimalField(max_digits=12, decimal_places=2)   # total incl. GST
+    amount         = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])   # total incl. GST
     date           = models.DateField(default=timezone.localdate)
     member_id      = models.IntegerField(null=True, blank=True)
     notes          = models.TextField(blank=True)
@@ -39,7 +40,7 @@ class Income(models.Model):
 class Expenditure(models.Model):
     category    = models.CharField(max_length=30, choices=EXPENSE_CATEGORIES, default="other")
     description = models.CharField(max_length=255)
-    amount      = models.DecimalField(max_digits=12, decimal_places=2)
+    amount      = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     date        = models.DateField(default=timezone.localdate)
     vendor      = models.CharField(max_length=150, blank=True)
     notes       = models.TextField(blank=True)

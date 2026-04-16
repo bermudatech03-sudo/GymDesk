@@ -181,11 +181,13 @@ def retry_failed_notifications():
 
 def send_enquiry_followups():
     """
-    Runs daily at 10:00 AM. Finds all due enquiry follow-ups and sends WhatsApp messages.
+    Runs daily at 9:00 AM. Sends due follow-ups only to enquiries in 'followup' status.
+    After the final scheduled date passes, flips remaining new/followup enquiries to 'lost'.
     """
-    from apps.enquiries.models import EnquiryFollowup
+    from apps.enquiries.models import Enquiry, EnquiryFollowup
     from apps.notifications.models import Notification
     from apps.finances.gst_utils import get_setting
+    from django.db.models import Max
     from django.utils import timezone
 
     today     = timezone.localdate()
@@ -198,7 +200,7 @@ def send_enquiry_followups():
 
     for followup in due:
         enquiry = followup.enquiry
-        if enquiry.status in ("converted", "lost"):
+        if enquiry.status != "followup":
             followup.sent = True
             followup.sent_at = timezone.now()
             followup.save()
@@ -226,5 +228,13 @@ def send_enquiry_followups():
         followup.sent    = True
         followup.sent_at = timezone.now()
         followup.save()
+
+    Enquiry.objects.filter(
+        status__in=["new", "followup"]
+    ).annotate(
+        last_followup=Max("followups__scheduled_date")
+    ).filter(
+        last_followup__lt=today
+    ).update(status="lost")
 
 

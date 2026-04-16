@@ -139,7 +139,6 @@ export default function Settings() {
       { label: "📊 Smart Data", value: "PostgreSQL Powered" },
       { label: "📩 Instant Alerts", value: "Email + WhatsApp Integration" },
       { label: "🎯 Modern UI", value: "Lightning-fast React + Vite" },
-      { label: "🚀 Version", value: "1.0.0 – Ready to Launch" },
     ].map(({ label, value }) => (
       <div key={label} style={{ background: "var(--surface2)", borderRadius: 10, padding: "14px 18px" }}>
         <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 6, fontWeight: 600 }}>

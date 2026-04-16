@@ -345,15 +345,27 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
                 })()}
               </>
             )}
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
-                <option value="active">Active</option>
-                <option value="expired">Expired</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="paused">Paused</option>
-              </select>
-            </div>
+            {!isEdit ? (
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
+                  <option value="active">Active</option>
+                  {/* <option value="expired">Expired</option> */}
+                  <option value="cancelled">Cancelled</option>
+                  <option value="paused">Paused</option>
+                </select>
+              </div>) : (
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="form-input" value={form.status} onChange={e => set("status", e.target.value)}>
+                  <option value="active">Active</option>
+                  <option value="expired">Expired</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="paused">Paused</option>
+                </select>
+              </div>
+            )}
+
             {!isEdit && (
               <div className="form-group">
                 <label className="form-label">Mode of Payment</label>

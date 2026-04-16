@@ -17,6 +17,16 @@ class NotificationViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "trigger_type"]
     ordering_fields  = ["created_at"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        date = self.request.query_params.get("date")
+        if date:
+            qs = qs.filter(created_at__date=date)
+        phone = self.request.query_params.get("phone")
+        if phone:
+            qs = qs.filter(recipient_phone__icontains=phone)
+        return qs
+
     @action(detail=False, methods=["post"])
     def send_renewal_reminders(self, request):
         # Fire exactly 3 days before renewal date

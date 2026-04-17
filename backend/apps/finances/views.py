@@ -33,7 +33,6 @@ class FinanceSummaryView(APIView):
         yearlyinc = Income.objects.filter(date__year=year)
         inc = Income.objects.filter(date__year=year, date__month=month)
         exp = Expenditure.objects.filter(date__year=year, date__month=month)
-        
         total_income  = inc.aggregate(t=Sum("amount"))["t"] or 0
         total_gst     = inc.aggregate(t=Sum("gst_amount"))["t"] or 0
         total_base    = inc.aggregate(t=Sum("base_amount"))["t"] or 0
@@ -42,6 +41,7 @@ class FinanceSummaryView(APIView):
         all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
         net_savings     = all_base_income - all_expense
         yearly_income  =  yearlyinc.aggregate(t=Sum("amount"))["t"] or 0
+        
         # 12-month trend
         monthly = []
         for i in range(11, -1, -1):
@@ -75,9 +75,11 @@ class FinanceSummaryView(APIView):
                 output_field=DjangoDecimalField(),
             )
         ).aggregate(t=Sum("bal"))["t"] or 0
+        total_income_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_amount"))["t"] or 0
+        total_base_income_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_base_amount"))["t"] or 0
+        total_gst_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
 
         outstanding = membership_outstanding + pt_renewal_outstanding
-
         return Response({
             "month": month, "year": year,
             "total_income":         float(total_income),
@@ -92,6 +94,9 @@ class FinanceSummaryView(APIView):
             "income_by_category":   inc_by_cat,
             "expense_by_category":  exp_by_cat,
             "yearly_income":        float(yearly_income),
+            "total_income_to_collect": float(total_income_to_collect),
+            "total_base_income_to_collect": float(total_base_income_to_collect),
+            "total_gst_to_collect": float(total_gst_to_collect),
         })
 
 
@@ -141,7 +146,7 @@ class MonthlyReportView(APIView):
         # The Income.notes plan_total is written at enrollment time and goes stale
         # when a trainer assignment later updates the payment (adds PT fee).
         # MemberPayment.total_with_gst is always up-to-date.
-        from apps.members.models import MemberPayment as _MemberPayment
+        from apps.members.models import MemberPayment as _MemberPayment,PTRenewal
         inv_nos = [i.invoice_number for i in incomes if i.invoice_number]
         payments_by_inv = {
             mp.invoice_number: mp
@@ -150,8 +155,6 @@ class MonthlyReportView(APIView):
         }
 
         merged_incomes = []
-        correct_income = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0
-        correct_base_income = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0
         for income in incomes:
             mp = payments_by_inv.get(income.invoice_number) if income.invoice_number else None
             rate        = Decimal(str(income.gst_rate or 0))
@@ -203,19 +206,33 @@ class MonthlyReportView(APIView):
         total_base = sum(r["base_amount"] for r in merged_incomes)
         total_gst  = sum(r["gst_amount"]  for r in merged_incomes)
 
+        membership_income_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0
+        personal_trainer_income_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_amount"))["t"] or 0
+        total_income_to_collect = membership_income_to_collect + personal_trainer_income_to_collect
+
+        membership_base_income_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0
+        personal_trainer_base_income_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("base_amount"))["t"] or 0
+        total_base_income_to_collect = membership_base_income_to_collect + personal_trainer_base_income_to_collect
+
+        membership_gst_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
+        personal_trainer_gst_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
+        total_gst_to_collect = membership_gst_to_collect + personal_trainer_gst_to_collect
         return Response({
             "gym":           gym,
             "month":         month,
             "year":          year,
             "month_name":    calendar.month_name[month],
-            "total_income":  float(correct_income),
-            "total_base":    correct_base_income,
-            "total_gst":     total_gst,
+            "total_income_collected":  float(total_income),
+            "total_base":    total_base,
+            "total_gst_collected":     total_gst,
             "total_expense": float(total_expense),
             "net":           float(total_income - total_expense),
             "incomes":       merged_incomes,
             "expenses":      ExpenditureSerializer(expenses, many=True).data,
             "total_income_without_gst": float(total_income_without_gst),
+            "total_income_to_collect": float(total_income_to_collect),
+            "total_base_income_to_collect": float(total_base_income_to_collect),
+            "total_gst_to_collect": float(total_gst_to_collect),
         })
 
 

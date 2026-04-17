@@ -294,13 +294,12 @@ class MemberViewSet(viewsets.ModelViewSet):
             )
 
             if amount_paid > 0:
-                if not d.get("personal_trainer", False):
-                    installment = _create_installment(
-                        payment, member, amount_paid, "enrollment",
-                        notes=d.get("notes", ""),
-                        mode_of_payment=d.get("mode_of_payment", "cash"),
-                    )
-                    _record_income_for_installment(member, payment, installment)
+                installment = _create_installment(
+                    payment, member, amount_paid, "enrollment",
+                    notes=d.get("notes", ""),
+                    mode_of_payment=d.get("mode_of_payment", "cash"),
+                )
+                _record_income_for_installment(member, payment, installment)
 
             payment.refresh_from_db()
             bill_data = _build_bill(member, payment, _gym_info())

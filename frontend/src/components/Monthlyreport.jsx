@@ -201,7 +201,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
         { v: "", s: totalStyle() },
         { v: Number(report.total_gst || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
-        { v: Number(report.total_income || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
+        { v: Number(report.total_income_collected || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
       ],
     ];
@@ -245,7 +245,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
       { v: "", s: titleStyle() }],
       [{ v: "Description", s: hdrStyle(DARK) }, { v: "Amount", s: hdrStyle(DARK) }],
       [{ v: "Total Income (incl. GST)", s: dataStyle("D8F3DC", true, "2D6A4F") },
-      { v: Number(report.total_income || 0), s: numStyle("D8F3DC", true, "2D6A4F"), numFmt: '₹#,##0.00' }],
+      { v: Number(report.total_income_collected || 0), s: numStyle("D8F3DC", true, "2D6A4F"), numFmt: '₹#,##0.00' }],
       [{ v: "GST Collected", s: dataStyle("E8F4FD", false, "1A3A9A") },
       { v: Number(report.total_gst || 0), s: numStyle("E8F4FD", false, "1A3A9A"), numFmt: '₹#,##0.00' }],
       [{ v: "Taxable Base Income", s: dataStyle("FFFFFF") },
@@ -345,8 +345,11 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
               {/* ── Summary grid ── */}
               <div className="summary-grid">
                 {[
-                  { lbl: "Total Income (incl. GST)", val: fmt(report.total_income), cls: "s-green" },
-                  { lbl: "GST Collected", val: fmt(report.total_gst), cls: "s-blue" },
+                  { lbl: "Total Income (incl. GST) To Collect", val: fmt(report.total_income_to_collect), cls: "s-green" },
+                  { lbl: "Total Base Income To Collect", val: fmt(report.total_base_income_to_collect), cls: "s-green" },
+                  { lbl: "GST To Collect", val: fmt(report.total_gst_to_collect), cls: "s-green" },
+                  { lbl: "Total Income (incl. GST)", val: fmt(report.total_income_collected), cls: "s-green" },
+                  { lbl: "GST Collected", val: fmt(report.total_gst_collected), cls: "s-blue" },
                   { lbl: "Taxable Base Income", val: fmt(report.total_base), cls: "" },
                   { lbl: "Total Expenses", val: fmt(report.total_expense), cls: "s-red" },
                   {

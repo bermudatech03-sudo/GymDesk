@@ -449,14 +449,19 @@ export default function Finances() {
       {/* Summary cards */}
       <div className="grid-4" style={{ marginBottom: 20 }}>
         {[
-          { label: "Monthly Income", val: fmt(summary?.total_income), color: "var(--accent)", icon: "↓" },
-          { label: "Income w/o GST", val: fmt(summary?.total_base_income), color: "var(--teal)", icon: "↓" },
+          { label: "Yearly Income", val: fmt(summary?.yearly_income), color: "var(--accent)", icon: "↓" },
+          { label: "Monthly Income To Be Collected", val: fmt(summary?.total_income_to_collect), color: "var(--accent)", icon: "↓" },
+          { label: "Monthly Income Without GST To be Collected", val: fmt(summary?.total_base_income_to_collect), color: "var(--accent)", icon: "↓" },
+          { label: "Monthly GST To Be Collected", val: fmt(summary?.total_gst_to_collect), color: "var(--accent)", icon: "↓" },
+          { label: "Monthly Income Collected", val: fmt(summary?.total_income), color: "var(--accent)", icon: "↓" },
+          { label: "Income w/o GST Collected", val: fmt(summary?.total_base_income), color: "var(--teal)", icon: "↓" },
           { label: "Monthly Expense", val: fmt(summary?.total_expense), color: "var(--danger)", icon: "↑" },
           {
             label: "Net Savings", val: fmt(summary?.net_savings),
             color: (summary?.net_savings || 0) >= 0 ? "var(--teal)" : "var(--danger)", icon: "★"
           },
           { label: "Outstanding", val: fmt(summary?.outstanding_balance), color: "var(--warn)", icon: "⚠" },
+
         ].map(c => (
           <div key={c.label} className="stat-card animate-in">
             <div className="icon" style={{

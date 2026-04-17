@@ -684,11 +684,13 @@ def run():
     # 12. EXTRA INCOME + EXPENDITURE (non-member sources)
     # ─────────────────────────────
     aux_categories = ["merchandise", "locker", "other"]
+    aux_seq = 0
     for d_offset in range(DAYS_BACK):
         d = today - timedelta(days=d_offset)
 
         # 0-2 supplemental income entries per day (merch, locker, walk-in)
         for _ in range(random.randint(0, 2)):
+            aux_seq += 1
             cat = random.choice(aux_categories)
             base = Decimal(random.randint(200, 3500))
             gst_amt = q2(base * GST / 100)
@@ -700,6 +702,7 @@ def run():
                 gst_amount=gst_amt,
                 amount=base + gst_amt,
                 date=d,
+                invoice_number=f"AUX-{d.strftime('%Y%m%d')}-{aux_seq:04d}",
                 notes=random.choice(FINANCE_INCOME_NOTES),
             )
 

@@ -30,7 +30,7 @@ class FinanceSummaryView(APIView):
         today = timezone.localdate()
         year  = int(request.query_params.get("year",  today.year))
         month = int(request.query_params.get("month", today.month))
-
+        yearlyinc = Income.objects.filter(date__year=year)
         inc = Income.objects.filter(date__year=year, date__month=month)
         exp = Expenditure.objects.filter(date__year=year, date__month=month)
         
@@ -38,12 +38,10 @@ class FinanceSummaryView(APIView):
         total_gst     = inc.aggregate(t=Sum("gst_amount"))["t"] or 0
         total_base    = inc.aggregate(t=Sum("base_amount"))["t"] or 0
         total_expense = exp.aggregate(t=Sum("amount"))["t"] or 0
-        print(total_income)
-        print(total_gst)
         all_base_income = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
         all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
         net_savings     = all_base_income - all_expense
-
+        yearly_income  =  yearlyinc.aggregate(t=Sum("amount"))["t"] or 0
         # 12-month trend
         monthly = []
         for i in range(11, -1, -1):
@@ -93,6 +91,7 @@ class FinanceSummaryView(APIView):
             "monthly_trend":        monthly,
             "income_by_category":   inc_by_cat,
             "expense_by_category":  exp_by_cat,
+            "yearly_income":        float(yearly_income),
         })
 
 
@@ -147,10 +146,12 @@ class MonthlyReportView(APIView):
         payments_by_inv = {
             mp.invoice_number: mp
             for mp in _MemberPayment.objects.filter(invoice_number__in=inv_nos)
+            
         }
 
         merged_incomes = []
-
+        correct_income = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0
+        correct_base_income = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0
         for income in incomes:
             mp = payments_by_inv.get(income.invoice_number) if income.invoice_number else None
             rate        = Decimal(str(income.gst_rate or 0))
@@ -160,7 +161,6 @@ class MonthlyReportView(APIView):
             
             pt_str = _parse_note_field(income.notes, "plan_total")
             plan_total = Decimal(str(pt_str)) if pt_str else (base_amount+gst_amount)
-
             if mp:
                 plan_total = Decimal(str(mp.total_with_gst))
 
@@ -178,22 +178,24 @@ class MonthlyReportView(APIView):
                 "mode_of_payment": _parse_note_field(income.notes,"mode") or "cash" ,
             })
 
-        for income in standalone:
-            pt_str = _parse_note_field(income.notes, "plan_total")
-            plan_total = float(pt_str) if pt_str else float(income.base_amount + income.gst_amount)
-            merged_incomes.append({
-                "id":             income.id,
-                "date":           str(income.date),
-                "invoice_number": income.invoice_number,
-                "source":         income.source,
-                "category":       income.category,
-                "base_amount":    float(income.base_amount),
-                "gst_rate":       float(income.gst_rate),
-                "gst_amount":     float(income.gst_amount),
-                "plan_total":     plan_total,
-                "amount":         float(income.amount),
-                "mode_of_payment": _parse_note_field(income.notes, "mode") or "cash",
-            })
+        
+
+        # for income in standalone:
+        #     pt_str = _parse_note_field(income.notes, "plan_total")
+        #     plan_total = float(pt_str) if pt_str else float(income.base_amount + income.gst_amount)
+        #     merged_incomes.append({
+        #         "id":             income.id,
+        #         "date":           str(income.date),
+        #         "invoice_number": income.invoice_number,
+        #         "source":         income.source,
+        #         "category":       income.category,
+        #         "base_amount":    float(income.base_amount),
+        #         "gst_rate":       float(income.gst_rate),
+        #         "gst_amount":     float(income.gst_amount),
+        #         "plan_total":     plan_total,
+        #         "amount":         float(income.amount),
+        #         "mode_of_payment": _parse_note_field(income.notes, "mode") or "cash",
+        #     })
 
         merged_incomes.sort(key=lambda x: x["date"])
 
@@ -206,8 +208,8 @@ class MonthlyReportView(APIView):
             "month":         month,
             "year":          year,
             "month_name":    calendar.month_name[month],
-            "total_income":  float(total_income),
-            "total_base":    total_base,
+            "total_income":  float(correct_income),
+            "total_base":    correct_base_income,
             "total_gst":     total_gst,
             "total_expense": float(total_expense),
             "net":           float(total_income - total_expense),

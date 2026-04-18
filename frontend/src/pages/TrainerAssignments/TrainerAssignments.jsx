@@ -512,14 +512,14 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
           startingtime:    form.startingtime,
           endingtime:      form.endingtime,
           working_days:    daysToStr(form.working_days),
-          amount_paid:     combined,
+          amount_paid:     collectAmt,
           mode_of_payment: modeOfPayment,
           notes:           pendingMember.notes || "",
         });
 
         toast.success(
-          combined > 0
-            ? `Member enrolled & trainer assigned! ₹${fmtD(combined)} recorded.`
+          collectAmt > 0
+            ? `Member enrolled & trainer assigned! ₹${fmtD(collectAmt)} recorded.`
             : "Member enrolled & trainer assigned!"
         );
         sessionStorage.removeItem("pendingMember");

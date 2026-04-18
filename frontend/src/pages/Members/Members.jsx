@@ -118,12 +118,17 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
         const nextType = form.plan_type;
         // basic → standard/premium: need trainer assignment (PT + maybe diet)
         if (prevType === "basic" && (nextType === "standard" || nextType === "premium")) {
-          onSave({ upgradeMemberId: member.id, upgradeType: "pt" });
+          onSave({ upgradeMemberId: member.id, upgradeType: "pt", prevType });
+          return;
+        }
+        // basic → dietonly-standard: diet fee only, no trainer needed
+        if (prevType === "basic" && nextType === "dietonly-standard" && form.diet) {
+          onSave({ upgradeMemberId: member.id, upgradeType: "diet_only", prevType, prevDiet: member.diet || null });
           return;
         }
         // standard → premium: trainer already assigned, only need diet fee
         if (prevType === "standard" && nextType === "premium" && form.diet) {
-          onSave({ upgradeMemberId: member.id, upgradeType: "diet_only" });
+          onSave({ upgradeMemberId: member.id, upgradeType: "diet_only", prevType, prevDiet: member.diet || null });
           return;
         }
         onSave(null);
@@ -983,7 +988,7 @@ function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCa
 }
 
 /* ─── Diet Upgrade Modal (standard → premium) ─────── */
-function DietUpgradeModal({ memberId, onClose, onBill }) {
+function DietUpgradeModal({ memberId, memberRenewalDate, onClose, onBill }) {
   const [dietBase, setDietBase] = useState(0);
   const [gstRate, setGstRate] = useState(18);
   const [amount, setAmount] = useState("");
@@ -997,11 +1002,27 @@ function DietUpgradeModal({ memberId, onClose, onBill }) {
       const rate = parseFloat(s.GST_RATE) || 18;
       setDietBase(base);
       setGstRate(rate);
-      setAmount((base * (1 + rate / 100)).toFixed(2));
+      // Prorate by pending membership days (capped at 30)
+      let dietDays = 30;
+      if (memberRenewalDate) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const renewal = new Date(memberRenewalDate); renewal.setHours(0, 0, 0, 0);
+        dietDays = Math.min(30, Math.max(0, Math.round((renewal - today) / 86400000)));
+      }
+      const prorated = dietDays < 30 ? parseFloat((base / 30 * dietDays).toFixed(2)) : base;
+      setAmount((prorated * (1 + rate / 100)).toFixed(2));
     }).catch(() => { });
-  }, []);
+  }, [memberRenewalDate]);
 
-  const dietWithGst = parseFloat((dietBase * (1 + gstRate / 100)).toFixed(2));
+  // Prorate diet base by pending days for display
+  const dietDays = (() => {
+    if (!memberRenewalDate) return 30;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const renewal = new Date(memberRenewalDate); renewal.setHours(0, 0, 0, 0);
+    return Math.min(30, Math.max(0, Math.round((renewal - today) / 86400000)));
+  })();
+  const proratedDietBase = dietDays < 30 ? parseFloat((dietBase / 30 * dietDays).toFixed(2)) : dietBase;
+  const dietWithGst = parseFloat((proratedDietBase * (1 + gstRate / 100)).toFixed(2));
   const balance = Math.max(0, dietWithGst - parseFloat(amount || 0));
 
   const submit = async (e) => {
@@ -1044,8 +1065,8 @@ function DietUpgradeModal({ memberId, onClose, onBill }) {
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }}>
           <div style={{ background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 3 }}>
-              <span>Diet Plan (base)</span>
-              <span style={{ fontFamily: "var(--font-mono)" }}>₹{dietBase.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+              <span>Diet Plan (base{dietDays < 30 ? `, ${dietDays} days` : ""})</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>₹{proratedDietBase.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", color: "var(--warn)", marginBottom: 3 }}>
               <span>GST ({gstRate}%)</span>
@@ -1059,7 +1080,7 @@ function DietUpgradeModal({ memberId, onClose, onBill }) {
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Amount to Collect (₹)</label>
-              <input className="form-input" type="number" min="0" value={amount}
+              <input className="form-input" type="number" min="0" step="0.01" value={amount}
                 onChange={e => setAmount(e.target.value)} placeholder="0" />
             </div>
             <div className="form-group">
@@ -1171,10 +1192,10 @@ export default function Members() {
     if (isUpgrade) {
       if (data.upgradeType === "diet_only") {
         load();
-        setDietUpgradeMemberId(data.upgradeMemberId);
+        setDietUpgradeMemberId({ id: data.upgradeMemberId, prevType: data.prevType, prevDiet: data.prevDiet });
         return;
       }
-      navigate(`/trainer-assignments?newMember=${data.upgradeMemberId}&from=members`);
+      navigate(`/trainer-assignments?newMember=${data.upgradeMemberId}&from=members&prevType=${data.prevType || "basic"}`);
       return;
     }
 
@@ -1510,8 +1531,21 @@ export default function Members() {
       {bill && <MemberBill bill={bill} onClose={() => setBill(null)} />}
       {dietUpgradeMemberId && (
         <DietUpgradeModal
-          memberId={dietUpgradeMemberId}
-          onClose={() => setDietUpgradeMemberId(null)}
+          memberId={dietUpgradeMemberId.id}
+          memberRenewalDate={members.find(m => m.id === dietUpgradeMemberId.id)?.renewal_date}
+          onClose={async () => {
+            // Revert plan_type and diet to previous values on cancel
+            if (dietUpgradeMemberId.prevType) {
+              try {
+                await api.patch(`/members/list/${dietUpgradeMemberId.id}/`, {
+                  plan_type: dietUpgradeMemberId.prevType,
+                  diet: dietUpgradeMemberId.prevDiet || null,
+                });
+              } catch {}
+              load();
+            }
+            setDietUpgradeMemberId(null);
+          }}
           onBill={(billData) => {
             setDietUpgradeMemberId(null);
             setBill(billData);

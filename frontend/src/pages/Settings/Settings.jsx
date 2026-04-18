@@ -15,6 +15,20 @@ const GYM_FIELDS = [
   { key: "DIET_PLAN_AMOUNT",  label: "Diet Plan Amount (₹)",     type: "number" },
 ];
 
+const NOTIFY_TOGGLES = [
+  { key: "NOTIFY_ENROLLMENT",      label: "Enrollment",                  desc: "Sent when a new member enrolls" },
+  { key: "NOTIFY_RENEWAL_CONFIRM", label: "Renewal & Installment Payments", desc: "Sent on membership renewal or balance payment" },
+  { key: "NOTIFY_RENEWAL_REMIND",  label: "About to Expire",             desc: "Sent 3 days before membership expires" },
+  { key: "NOTIFY_EXPIRY",          label: "Plan Expired",                desc: "Sent 3 days after membership expires" },
+  { key: "NOTIFY_ABSENT",          label: "Member Absentees",            desc: "Sent when an active member misses the gym" },
+  { key: "NOTIFY_STAFF_ABSENT",    label: "Staff Absentees",             desc: "Sent when a staff member misses their shift" },
+  { key: "NOTIFY_DIET_REMINDER",   label: "Diet Plan Reminder",          desc: "Sent at scheduled meal times to members on a diet plan" },
+  { key: "NOTIFY_ENQUIRY_FOLLOWUP", label: "Enquiry Follow-up",          desc: "Sent on scheduled follow-up dates to enquiries" },
+  { key: "NOTIFY_NEW_PLAN",        label: "New Membership / Offer Plan", desc: "Sent to all active members and enquiries when a new plan is added" },
+  { key: "NOTIFY_PT_RENEWAL",      label: "PT Renewal & PT Balance",     desc: "Sends the PT receipt on personal training renewal or balance payment" },
+  { key: "NOTIFY_DAILY_NOTICE",    label: "Daily Buy Reminder (Admin)",  desc: "Sends admin a daily WhatsApp about pending items to buy" },
+];
+
 export default function Settings() {
   const { user } = useAuth();
   const [pw, setPw] = useState({ old_password:"", new_password:"", confirm:"" });
@@ -102,6 +116,64 @@ export default function Settings() {
               {gymSaving ? "Saving…" : "Save Gym Settings"}
             </button>
           </form>
+        </div>
+
+        {/* WhatsApp Notification Toggles */}
+        <div className="card" style={{ padding: 24, gridColumn: "1/-1" }}>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+            WhatsApp Notifications
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 18 }}>
+            Turn each category on or off. Each toggle saves instantly.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 12 }}>
+            {NOTIFY_TOGGLES.map(({ key, label, desc }) => {
+              const isOn = (gymSettings[key] ?? "true") !== "false";
+              const toggle = async () => {
+                const newVal = isOn ? "false" : "true";
+                setGymSettings(p => ({ ...p, [key]: newVal }));
+                try {
+                  await api.patch("/finances/gym-settings/", { [key]: newVal });
+                } catch {
+                  setGymSettings(p => ({ ...p, [key]: isOn ? "true" : "false" }));
+                  toast.error("Failed to save. Please try again.");
+                }
+              };
+              return (
+                <div key={key} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "var(--surface2)", borderRadius: 10, padding: "12px 16px",
+                  border: "1px solid var(--border)",
+                }}>
+                  <div style={{ flex: 1, marginRight: 14 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text1)", marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 11, color: "var(--text3)" }}>{desc}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    style={{
+                      flexShrink: 0,
+                      width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                      background: isOn ? "var(--accent)" : "var(--surface)",
+                      outline: isOn ? "none" : "1px solid var(--border)",
+                      position: "relative", transition: "background 0.2s",
+                    }}
+                    aria-label={`Toggle ${label}`}
+                  >
+                    <span style={{
+                      position: "absolute", top: 3,
+                      left: isOn ? 23 : 3,
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: isOn ? "#08080a" : "var(--text3)",
+                      transition: "left 0.2s",
+                      display: "block",
+                    }} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Change password */}

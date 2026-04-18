@@ -22,7 +22,7 @@ class Member(models.Model):
     PLANTYPE = [("basic","Basic"),("standard","Standard"),("premium","Premium"),("dietonly-standard","Standard (Diet Only)")]
     name         = models.CharField(max_length=150)
     phone        = models.CharField(max_length=15, unique=True)
-    email        = models.EmailField(blank=True)
+    email        = models.EmailField(blank=True,null = True)
     age          = models.PositiveIntegerField(default=18)
     dob          = models.DateField(null=True, blank=True)
     gender       = models.CharField(max_length=10, choices=GENDER, blank=True)

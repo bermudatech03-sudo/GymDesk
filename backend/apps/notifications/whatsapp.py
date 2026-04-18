@@ -603,12 +603,26 @@ def send_whatsapp_document(to: str, media_id: str, filename: str, caption: str) 
         return {"success": False, "error": str(e)}
 
 
+_BILL_TRIGGER_SETTING_KEY = {
+    "enrollment": "NOTIFY_ENROLLMENT",
+    "renewal":    "NOTIFY_RENEWAL_CONFIRM",
+    "balance":    "NOTIFY_RENEWAL_CONFIRM",
+    "pt_renewal": "NOTIFY_PT_RENEWAL",
+    "pt_balance": "NOTIFY_PT_RENEWAL",
+}
+
+
 def send_bill_on_whatsapp(phone: str, bill: dict, trigger_type: str) -> None:
     """
     Full flow: generate PDF → upload to Meta → send as WhatsApp document.
     Call this after enrollment or renewal.
     `phone` should already include country code e.g. "919876543210"
     """
+    from apps.finances.gst_utils import is_notify_enabled
+    setting_key = _BILL_TRIGGER_SETTING_KEY.get(trigger_type)
+    if setting_key and not is_notify_enabled(setting_key):
+        return
+
     if not phone:
         logger.warning("send_bill_on_whatsapp: no phone number, skipping.")
         return

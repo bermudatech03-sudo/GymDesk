@@ -464,9 +464,17 @@ class MemberViewSet(viewsets.ModelViewSet):
         if not latest_payment:
             return Response({"detail": "No payment record found for this member."}, status=400)
 
-        diet_amt = _get_diet_amt()
-        if diet_amt <= 0:
+        diet_amt_full = _get_diet_amt()
+        if diet_amt_full <= 0:
             return Response({"detail": "Diet plan amount is not configured in settings."}, status=400)
+
+        # Prorate diet by pending days in membership (capped at 30), same logic as PT
+        today = timezone.localdate()
+        if member.renewal_date and member.renewal_date > today:
+            diet_days = min(30, (member.renewal_date - today).days)
+            diet_amt = (diet_amt_full / 30 * diet_days).quantize(Decimal("0.01"), ROUND_HALF_UP) if diet_days < 30 else diet_amt_full
+        else:
+            diet_amt = diet_amt_full
 
         if latest_payment.diet_plan_amount >= diet_amt:
             return Response({"detail": "Diet plan fee already included in this payment cycle."}, status=400)
@@ -828,8 +836,13 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
 
         # Recompute latest payment to include trainer PT fee AND current diet (for upgrades)
         from apps.finances.gst_utils import get_diet_plan_amount as _get_diet_amt
-        diet_amt_current = _get_diet_amt() if member.diet else Decimal("0")
-        trainer_fee      = Decimal(str(trainer.personal_trainer_amt or 0))
+        trainer_fee_full = Decimal(str(trainer.personal_trainer_amt or 0))
+
+        # Prorate PT and diet fees by actual days assigned (same logic as PT renewal)
+        pt_days = (pt_end - pt_start).days
+        trainer_fee = (trainer_fee_full / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP) if pt_days < 30 else trainer_fee_full
+        diet_full = _get_diet_amt() if member.diet else Decimal("0")
+        diet_amt_current = (diet_full / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP) if (member.diet and pt_days < 30) else diet_full
 
         if latest_payment and latest_payment.plan:
             base, gst_amt, total, rate = _calc_gst(

@@ -30,6 +30,10 @@ def send_expiry_notices():
         send_notification(member, "expiry")
 
 def send_daily_notice():
+    from apps.finances.gst_utils import is_notify_enabled
+    if not is_notify_enabled("NOTIFY_DAILY_NOTICE"):
+        return
+
     items = ToBuy.objects.filter(
         status = "pending",
     )
@@ -111,6 +115,10 @@ def send_staff_absent_notifications():
 def send_diet_notifications():
     from apps.members.models import Diet, Member
     from apps.notifications.models import Notification
+    from apps.finances.gst_utils import is_notify_enabled
+
+    if not is_notify_enabled("NOTIFY_DIET_REMINDER"):
+        return
 
     now = timezone.localtime(timezone.now())
     window_start = now.time().replace(second=0, microsecond=0)
@@ -186,7 +194,7 @@ def send_enquiry_followups():
     """
     from apps.enquiries.models import Enquiry, EnquiryFollowup
     from apps.notifications.models import Notification
-    from apps.finances.gst_utils import get_setting
+    from apps.finances.gst_utils import get_setting, is_notify_enabled
     from django.db.models import Max
     from django.utils import timezone
 
@@ -210,20 +218,21 @@ def send_enquiry_followups():
         if phone and not phone.startswith("91"):
             phone = f"91{phone}"
 
-        message = (
-            f"Hi {enquiry.name}, friendly reminder from {gym_name}! "
-            f"We'd love to welcome you to our fitness family. "
-            f"Call us at {gym_phone} or just walk in anytime. 💪"
-        )
+        if is_notify_enabled("NOTIFY_ENQUIRY_FOLLOWUP"):
+            message = (
+                f"Hi {enquiry.name}, friendly reminder from {gym_name}! "
+                f"We'd love to welcome you to our fitness family. "
+                f"Call us at {gym_phone} or just walk in anytime. 💪"
+            )
 
-        Notification.objects.create(
-            recipient_name=enquiry.name,
-            recipient_phone=phone,
-            channel="whatsapp",
-            trigger_type="enquiry_followup",
-            message=message,
-            status="pending",
-        )
+            Notification.objects.create(
+                recipient_name=enquiry.name,
+                recipient_phone=phone,
+                channel="whatsapp",
+                trigger_type="enquiry_followup",
+                message=message,
+                status="pending",
+            )
 
         followup.sent    = True
         followup.sent_at = timezone.now()

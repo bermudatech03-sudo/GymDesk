@@ -422,15 +422,29 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   const memberPlan        = plans.find(p => String(p.id) === String(memberPlanId));
   const planWithGst       = parseFloat(memberPlan?.price_with_gst ?? memberPlan?.price ?? 0);
   const ptFee             = parseFloat(selectedTrainer?.personal_trainer_amt ?? 0);
-  const ptFeeGst          = parseFloat((ptFee * gymGstRate / 100).toFixed(2));
-  const ptFeeWithGst      = ptFee + ptFeeGst;
+
+  // Prorate PT fee by actual days that will be assigned (same logic as PT renewal)
+  const memberRenewalDate = pendingMember?.renewal_date || selectedMemberObj?.renewal_date;
+  const ptDays = (() => {
+    if (!memberRenewalDate) return 30;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const renewal = new Date(memberRenewalDate); renewal.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((renewal - today) / 86400000);
+    return Math.min(30, Math.max(0, daysLeft));
+  })();
+  const proratedPtFee    = ptDays < 30 ? parseFloat((ptFee / 30 * ptDays).toFixed(2)) : ptFee;
+  const ptFeeGst         = parseFloat((proratedPtFee * gymGstRate / 100).toFixed(2));
+  const ptFeeWithGst     = proratedPtFee + ptFeeGst;
 
   // Determine if the member being assigned has a diet plan
   const memberHasDiet = pendingMember
     ? Boolean(pendingMember.diet)
     : Boolean(selectedMemberObj?.diet_id);
+  const proratedDietBaseAmt = memberHasDiet && ptDays < 30
+    ? parseFloat((dietBaseAmt / 30 * ptDays).toFixed(2))
+    : dietBaseAmt;
   const dietWithGst = memberHasDiet
-    ? parseFloat((dietBaseAmt * (1 + gymGstRate / 100)).toFixed(2))
+    ? parseFloat((proratedDietBaseAmt * (1 + gymGstRate / 100)).toFixed(2))
     : 0;
 
   // For new enrollment (pendingMember): diet was already collected with plan fee at enrollment.
@@ -761,8 +775,8 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
               {ptFee > 0 && (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
-                    <span>Personal Trainer Fee (base)</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(ptFee)}</span>
+                    <span>Personal Trainer Fee (base{ptDays < 30 ? `, ${ptDays} days` : ""})</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(proratedPtFee)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--text2)", marginBottom: 4 }}>
                     <span>GST on PT Fee ({gymGstRate}%)</span>
@@ -776,7 +790,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
               )}
               {dietWithGst > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)", marginBottom: 4 }}>
-                  <span>Diet Plan (incl. GST)</span>
+                  <span>Diet Plan (incl. GST{ptDays < 30 ? `, ${ptDays} days` : ""})</span>
                   <span style={{ fontFamily: "var(--font-mono)" }}>₹{fmtD(dietWithGst)}</span>
                 </div>
               )}
@@ -969,6 +983,7 @@ export default function TrainerAssignments() {
   const newMemberId = urlParams.get("newMember");
   const fromPage    = urlParams.get("from");
   const isPending   = urlParams.get("pending") === "1";
+  const prevType    = urlParams.get("prevType");
 
   const [assignments, setAssignments]   = useState([]);
   const [allMembers, setAllMembers]     = useState([]);
@@ -1448,7 +1463,14 @@ export default function TrainerAssignments() {
           plans={plans}
           newMemberId={modal === "new" ? newMemberId : null}
           pendingMember={modal === "new" ? pendingMember : null}
-          onClose={() => setModal(null)}
+          onClose={async () => {
+            // If this was a basic→standard/premium upgrade and user cancels, revert plan_type
+            if (modal === "new" && newMemberId && prevType) {
+              try { await api.patch(`/members/list/${newMemberId}/`, { plan_type: prevType }); } catch {}
+              navigate(`/${fromPage || "members"}`);
+            }
+            setModal(null);
+          }}
           onSave={() => {
             setModal(null);
             setPendingMember(null);

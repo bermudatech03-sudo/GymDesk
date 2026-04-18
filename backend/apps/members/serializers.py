@@ -205,8 +205,14 @@ class TrainerAssignmentSerializer(serializers.ModelSerializer):
         amt = obj.trainer.personal_trainer_amt
         if not amt:
             return 0
+        fee = Decimal(str(amt))
+        # Prorate by actual PT days assigned (capped at 30)
+        if obj.pt_start_date and obj.pt_end_date:
+            pt_days = (obj.pt_end_date - obj.pt_start_date).days
+            if 0 < pt_days < 30:
+                fee = (fee / 30 * pt_days).quantize(Decimal("0.01"), ROUND_HALF_UP)
         pct = get_pt_payable_percent()
-        payable = (Decimal(str(amt)) * pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        payable = (fee * pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
         return float(payable)
 
     def get_member_amount_paid(self, obj):

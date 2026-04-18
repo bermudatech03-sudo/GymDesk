@@ -45,7 +45,7 @@ class Member(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.phone})"
+        return f"{self.name} ({self.phone}) {self.total_paid()} paid, {self.balance_due()} due"
 
     def days_until_expiry(self):
         if self.renewal_date:

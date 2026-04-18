@@ -46,7 +46,7 @@ from apps.enquiries.models import Enquiry, EnquiryFollowup
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-DAYS_BACK = 120        # how far back to generate historical data
+DAYS_BACK = 60         # how far back to generate historical data
 random.seed(42)        # deterministic runs
 
 
@@ -336,7 +336,7 @@ def run():
                 "shift_template": shift_map[shift_key],
                 "salary": Decimal(salary),
                 "personal_trainer_amt": Decimal(pt_amt) if pt_amt else None,
-                "join_date": rand_date(start_date, today - timedelta(days=30)),
+                "join_date": date(2025, 6, 1) + timedelta(days=idx * 15),
                 "status": "active",
                 "address": f"#{random.randint(1,99)}, {random.choice(['Anna Nagar','T Nagar','Adyar','Velachery'])}, Chennai",
             },
@@ -346,16 +346,16 @@ def run():
     trainer_staff = [s for s in staff_list if s.role == "trainer"]
 
     # ─────────────────────────────
-    # 5. STAFF ATTENDANCE (computed fields auto-filled by save())
+    # 5. STAFF ATTENDANCE — March 2026
     # ─────────────────────────────
     for s in staff_list:
         base_in = s.shift_template.start_time if s.shift_template else time(9, 0)
         base_out = s.shift_template.end_time if s.shift_template else time(17, 0)
         used_dates = set()
         attempts = 0
-        while len(used_dates) < 45 and attempts < 150:
+        while len(used_dates) < 24 and attempts < 100:
             attempts += 1
-            d = rand_date(max(start_date, s.join_date), today)
+            d = rand_date(date(2026, 3, 1), date(2026, 3, 31))
             if d in used_dates:
                 continue
             used_dates.add(d)
@@ -372,43 +372,41 @@ def run():
             )
 
     # ─────────────────────────────
-    # 6. STAFF PAYMENTS — last 3 months
+    # 6. STAFF PAYMENTS — March 2026
     # ─────────────────────────────
     for s in staff_list:
-        for months_ago in range(3):
-            pay_month = (today.replace(day=1) - timedelta(days=months_ago * 30)).replace(day=1)
-            is_current = months_ago == 0
-            StaffPayment.objects.get_or_create(
-                staff=s,
-                month=pay_month,
-                defaults={
-                    "amount": s.salary,
-                    "status": "pending" if is_current else "paid",
-                    "paid_date": None if is_current else pay_month.replace(day=28),
-                },
-            )
+        StaffPayment.objects.get_or_create(
+            staff=s,
+            month=date(2026, 3, 1),
+            defaults={
+                "amount": s.salary,
+                "status": "paid",
+                "paid_date": date(2026, 3, 28),
+            },
+        )
 
     # ─────────────────────────────
-    # 7. MEMBERS
+    # 7. MEMBERS — all 30 join in March 2026
+    #    28 will be fully paid, 2 will be partial (pending balance)
     # ─────────────────────────────
     members = []
     genders = ["Male", "Female", "Other"]
     food_types = ["veg", "nonveg", "vegan"]
 
-    for idx, full_name in enumerate(MEMBER_NAMES):
+    # March 2026 date range for join dates
+    march_start = date(2026, 3, 1)
+    march_end   = date(2026, 3, 28)
+
+    # Use only first 30 names
+    member_names_30 = MEMBER_NAMES[:30]
+
+    for idx, full_name in enumerate(member_names_30):
         phone = f"9{idx:09}"
-        plan = random.choice(plan_objs)
-        join = rand_date(start_date, today - timedelta(days=5))
-        wants_pt = random.random() < 0.35
+        plan = plan_objs[idx % len(plan_objs)]  # cycle through plans deterministically
+        join = march_start + timedelta(days=idx % 28)  # spread across March
+        wants_pt = idx < 8  # first 8 get PT
 
-        # ~15% expired profiles — renewal_date in the past
-        if random.random() < 0.15:
-            join = today - timedelta(days=plan.duration_days + random.randint(5, 30))
-            status = "expired"
-        else:
-            status = "active"
-
-        food_type = random.choice(food_types)
+        food_type = food_types[idx % 3]
         diet = next((dp for dp in diet_plan_objs if food_type in dp.foodType), diet_plan_objs[0])
 
         if "Premium" in plan.name or "Annual" in plan.name:
@@ -423,45 +421,49 @@ def run():
             defaults={
                 "name": full_name,
                 "email": f"{full_name.lower().replace(' ', '.')}@example.com",
-                "age": random.randint(18, 50),
-                "gender": random.choice(genders),
+                "age": 20 + idx,
+                "gender": genders[idx % 3],
                 "plan": plan,
                 "plan_type": plan_type,
                 "diet": diet,
                 "join_date": join,
                 "renewal_date": join + timedelta(days=plan.duration_days),
-                "status": status,
+                "status": "active",
                 "foodType": food_type,
                 "personal_trainer": wants_pt,
                 "notes": "",
-                "address": f"Flat {random.randint(1,50)}, Sector {random.randint(1,20)}, Chennai",
+                "address": f"Flat {idx+1}, Sector {(idx % 20)+1}, Chennai",
             },
         )
         members.append(m)
 
     # ─────────────────────────────
     # 8. MEMBER PAYMENTS + INSTALLMENTS (enrollment cycle)
+    #    28 fully paid in March, 2 partial (index 28 & 29)
+    #
+    #    Partial member 28 (Pallavi Patil)  — Basic  ₹1000 + 18% GST = ₹1180, pays ~₹660, pending ~₹520
+    #    Partial member 29 (Siddharth Jain) — Standard ₹2500 + 18% GST = ₹2950, pays ~₹1500, pending ~₹1450
+    #
+    #    These pending amounts should carry over to April "To Be Collected".
     # ─────────────────────────────
-    for m in members:
+    PARTIAL_INDICES = {28, 29}   # these two get partial payment
+
+    for idx, m in enumerate(members):
         plan = m.plan
         if not plan:
             continue
         if MemberPayment.objects.filter(member=m, valid_from=m.join_date).exists():
             continue
 
-        # plan price may include a PT trainer fee later; for enrollment we
-        # capture plan price here (PT fee is added separately in section 9).
         base = Decimal(plan.price)
         gst_amount = q2(base * GST / 100)
         total = base + gst_amount
 
-        scenario = random.choices(["full", "partial", "pending"], weights=[60, 28, 12])[0]
-        if scenario == "full":
-            paid = total
-        elif scenario == "partial":
-            paid = q2(total * Decimal(random.randint(30, 80)) / 100)
+        if idx in PARTIAL_INDICES:
+            # ~56% and ~51% partial payment so there's a clear pending balance
+            paid = q2(total * Decimal("0.56")) if idx == 28 else q2(total * Decimal("0.51"))
         else:
-            paid = Decimal("0")
+            paid = total
 
         mp = MemberPayment.objects.create(
             member=m,
@@ -479,6 +481,7 @@ def run():
         )
 
         if paid > 0:
+            mode = ["cash", "upi", "card"][idx % 3]
             InstallmentPayment.objects.create(
                 payment=mp,
                 member=m,
@@ -486,9 +489,8 @@ def run():
                 amount=paid,
                 balance_after=max(total - paid, Decimal("0")),
                 paid_date=m.join_date,
-                mode_of_payment=random.choice(["cash", "upi", "card"]),
+                mode_of_payment=mode,
             )
-            # Mirror into Income ledger (real app does this via signal; seed is explicit)
             Income.objects.create(
                 source=f"Enrollment — {m.name}",
                 category="membership",
@@ -499,38 +501,13 @@ def run():
                 date=m.join_date,
                 member_id=m.id,
                 invoice_number=mp.invoice_number,
-                notes="Enrollment installment",
+                notes=(f"Enrollment installment | plan_total:{total} | mode:{mode}"),
             )
 
-        # ~30% of partial members pay a second installment within 10-25 days
-        if scenario == "partial" and random.random() < 0.6:
-            remaining = total - paid
-            second_pay = q2(remaining * Decimal(random.randint(40, 100)) / 100)
-            second_date = m.join_date + timedelta(days=random.randint(10, 25))
-            if second_date <= today and second_pay > 0:
-                mp.amount_paid += second_pay
-                mp.save()
-                InstallmentPayment.objects.create(
-                    payment=mp,
-                    member=m,
-                    installment_type="balance",
-                    amount=second_pay,
-                    balance_after=max(total - mp.amount_paid, Decimal("0")),
-                    paid_date=second_date,
-                    mode_of_payment=random.choice(["cash", "upi", "card"]),
-                )
-                Income.objects.create(
-                    source=f"Balance payment — {m.name}",
-                    category="membership",
-                    base_amount=q2(second_pay * 100 / (100 + GST)),
-                    gst_rate=GST,
-                    gst_amount=q2(second_pay - (second_pay * 100 / (100 + GST))),
-                    amount=second_pay,
-                    date=second_date,
-                    member_id=m.id,
-                    invoice_number=mp.invoice_number,
-                    notes="Balance installment",
-                )
+        if idx in PARTIAL_INDICES:
+            pending = total - paid
+            print(f"   PARTIAL: {m.name} -- Plan: {plan.name}, Total: Rs.{total}, "
+                  f"Paid: Rs.{paid}, Pending: Rs.{pending}")
 
     # ─────────────────────────────
     # 9. TRAINER ASSIGNMENTS + PT RENEWALS
@@ -565,7 +542,7 @@ def run():
             cursor_end = pt_end
             for seq in range(random.randint(1, 2)):
                 next_start = cursor_end + timedelta(days=1)
-                if next_start >= today:
+                if next_start >= date(2026, 3, 31):
                     break
                 plan_end = m.renewal_date or (next_start + timedelta(days=30))
                 days_left = max(0, (plan_end - next_start).days)
@@ -617,16 +594,16 @@ def run():
                 cursor_end = next_end
 
     # ─────────────────────────────
-    # 10. MEMBER ATTENDANCE
+    # 10. MEMBER ATTENDANCE — March 2026 only
     # ─────────────────────────────
     for m in members:
         attend_start = m.join_date
-        attend_end = m.renewal_date if m.status == "expired" else today
+        attend_end = date(2026, 3, 31)
         if attend_end <= attend_start:
             continue
 
         used_dates = set()
-        target = random.randint(18, 40)
+        target = random.randint(10, 22)
         attempts = 0
         while len(used_dates) < target and attempts < target * 4:
             attempts += 1
@@ -655,19 +632,19 @@ def run():
                 "model_number": model_no,
                 "quantity": qty,
                 "condition": condition,
-                "purchase_date": rand_date(start_date - timedelta(days=365), start_date),
+                "purchase_date": rand_date(date(2025, 1, 1), date(2025, 12, 31)),
                 "purchase_price": Decimal(price),
                 "is_active": True,
                 "location": random.choice(["Main Floor", "Cardio Zone", "Free Weights Area", "Yoga Room"]),
-                "last_service": rand_date(start_date, today - timedelta(days=10)),
-                "next_service": today + timedelta(days=random.randint(30, 90)),
+                "last_service": rand_date(date(2026, 2, 1), date(2026, 3, 20)),
+                "next_service": date(2026, 4, 1) + timedelta(days=random.randint(30, 90)),
             },
         )
         if created:
             for _ in range(random.randint(1, 3)):
                 MaintenanceLog.objects.create(
                     equipment=eq,
-                    date=rand_date(start_date, today),
+                    date=rand_date(date(2026, 2, 1), date(2026, 3, 25)),
                     description=random.choice([
                         "Routine inspection and lubrication",
                         "Belt replacement",
@@ -677,16 +654,17 @@ def run():
                     ]),
                     cost=Decimal(random.randint(200, 3000)),
                     technician=random.choice(["Raj Electricals", "FitTech Services", "In-house"]),
-                    next_due=today + timedelta(days=random.randint(30, 90)),
+                    next_due=date(2026, 4, 1) + timedelta(days=random.randint(30, 90)),
                 )
 
     # ─────────────────────────────
     # 12. EXTRA INCOME + EXPENDITURE (non-member sources)
+    #     Only March 2026 — no April data
     # ─────────────────────────────
     aux_categories = ["merchandise", "locker", "other"]
     aux_seq = 0
-    for d_offset in range(DAYS_BACK):
-        d = today - timedelta(days=d_offset)
+    for day_num in range(1, 32):  # March 1-31
+        d = date(2026, 3, day_num)
 
         # 0-2 supplemental income entries per day (merch, locker, walk-in)
         for _ in range(random.randint(0, 2)):
@@ -721,7 +699,7 @@ def run():
     # 13. TO-BUY LIST
     # ─────────────────────────────
     for item_name, qty, price, priority, status, notes, url, days_offset in TOBUY_LIST:
-        buying_date = (today + timedelta(days=days_offset)) if status == "pending" else None
+        buying_date = (date(2026, 4, 1) + timedelta(days=days_offset)) if status == "pending" else None
         ToBuy.objects.get_or_create(
             item_name=item_name,
             defaults={
@@ -749,13 +727,13 @@ def run():
             },
         )
         if created:
-            base_date = today - timedelta(days=random.randint(1, 20))
+            base_date = date(2026, 3, 15) - timedelta(days=random.randint(1, 10))
             EnquiryFollowup.objects.bulk_create([
                 EnquiryFollowup(
                     enquiry=enq,
                     scheduled_date=base_date + timedelta(days=offset),
-                    sent=(base_date + timedelta(days=offset) < today),
-                    sent_at=timezone.now() if (base_date + timedelta(days=offset) < today) else None,
+                    sent=(base_date + timedelta(days=offset) < date(2026, 3, 31)),
+                    sent_at=timezone.now() if (base_date + timedelta(days=offset) < date(2026, 3, 31)) else None,
                 )
                 for offset in [0, 3, 7, 14, 21, 30, 45, 60, 75, 90]
             ])
@@ -763,8 +741,9 @@ def run():
     # ─────────────────────────────
     # 15. NOTIFICATIONS
     # ─────────────────────────────
+    ref_date = date(2026, 3, 31)
     expiring_members = [m for m in members
-                        if m.renewal_date and 0 <= (m.renewal_date - today).days <= 7]
+                        if m.renewal_date and 0 <= (m.renewal_date - ref_date).days <= 7]
     expired_members  = [m for m in members if m.status == "expired"]
     recent_members   = sorted(members, key=lambda m: m.join_date, reverse=True)[:8]
 
@@ -831,7 +810,9 @@ def run():
     # ─────────────────────────────
     # DONE
     # ─────────────────────────────
+    print("\n" + "="*60)
     print("Seeding complete!")
+    print("="*60)
     print(f"   Users:          {User.objects.count()}  (login: admin / admin123)")
     print(f"   Plans:          {MembershipPlan.objects.count()}")
     print(f"   Diet Plans:     {DietPlan.objects.count()}  ({Diet.objects.count()} items)")
@@ -851,6 +832,21 @@ def run():
     print(f"   To-Buy items:   {ToBuy.objects.count()}")
     print(f"   Enquiries:      {Enquiry.objects.count()}  ({EnquiryFollowup.objects.count()} followups)")
     print(f"   Notifications:  {Notification.objects.count()}")
+
+    # Carryover test summary
+    print("\n" + "-"*60)
+    print("CARRYOVER TEST — Partial payments from March 2026:")
+    print("-"*60)
+    partial_payments = MemberPayment.objects.filter(status__in=["partial", "pending"])
+    for pp in partial_payments:
+        print(f"   {pp.member.name}")
+        print(f"     Plan: {pp.plan.name}, Total: Rs.{pp.total_with_gst}, "
+              f"Paid: Rs.{pp.amount_paid}, Pending: Rs.{pp.balance}")
+        print(f"     Invoice: {pp.invoice_number}, paid_date: {pp.paid_date}")
+    total_pending = sum(float(pp.balance) for pp in partial_payments)
+    print(f"\n   Total pending to carry into April: Rs.{total_pending:.2f}")
+    print(f"   Switch to April in Finances page to verify 'To Be Collected' includes this.")
+    print("-"*60)
 
 
 if __name__ == "__main__":

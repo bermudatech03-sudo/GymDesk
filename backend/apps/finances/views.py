@@ -75,9 +75,54 @@ class FinanceSummaryView(APIView):
                 output_field=DjangoDecimalField(),
             )
         ).aggregate(t=Sum("bal"))["t"] or 0
-        total_income_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_amount"))["t"] or 0
-        total_base_income_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_base_amount"))["t"] or 0
-        total_gst_to_collect = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0 + PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
+        # --- "To be collected" for the selected month ---
+        # 1) Invoices created this month (their full plan value)
+        mp_total = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0
+        pt_total = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_amount"))["t"] or 0
+        mp_base  = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0
+        pt_base  = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("base_amount"))["t"] or 0
+        mp_gst   = MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
+        pt_gst   = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
+
+        # 2) Carry forward pending balance from previous months' invoices
+        import datetime as _dt
+        from apps.members.models import InstallmentPayment
+        first_of_month = _dt.date(year, month, 1)
+        carryover_total = carryover_base = carryover_gst = 0
+
+        # MemberPayments from before this month with pending balance
+        for mp in MemberPayment.objects.filter(paid_date__lt=first_of_month):
+            collected_before = float(mp.installment_payments.filter(
+                paid_date__lt=first_of_month
+            ).aggregate(t=Sum("amount"))["t"] or 0)
+            pending = float(mp.total_with_gst) - collected_before
+            if pending > 0.01:
+                gst = float(mp.gst_amount)
+                pending_gst = max(gst - collected_before, 0)
+                pending_base = pending - pending_gst
+                carryover_total += pending
+                carryover_base += pending_base
+                carryover_gst += pending_gst
+
+        # PTRenewals from before this month with pending balance
+        for ptr in PTRenewal.objects.filter(paid_date__lt=first_of_month):
+            if not ptr.invoice_number:
+                continue
+            collected_before = float(Income.objects.filter(
+                invoice_number=ptr.invoice_number, date__lt=first_of_month
+            ).aggregate(t=Sum("amount"))["t"] or 0)
+            pending = float(ptr.total_amount) - collected_before
+            if pending > 0.01:
+                gst = float(ptr.gst_amount)
+                pending_gst = max(gst - collected_before, 0)
+                pending_base = pending - pending_gst
+                carryover_total += pending
+                carryover_base += pending_base
+                carryover_gst += pending_gst
+
+        total_income_to_collect = float(mp_total) + float(pt_total) + carryover_total
+        total_base_income_to_collect = float(mp_base) + float(pt_base) + carryover_base
+        total_gst_to_collect = float(mp_gst) + float(pt_gst) + carryover_gst
 
         outstanding = membership_outstanding + pt_renewal_outstanding
         return Response({
@@ -206,17 +251,56 @@ class MonthlyReportView(APIView):
         total_base = sum(r["base_amount"] for r in merged_incomes)
         total_gst  = sum(r["gst_amount"]  for r in merged_incomes)
 
+        # --- "To be collected" for the selected month ---
+        # 1) Invoices created this month
         membership_income_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_with_gst"))["t"] or 0
         personal_trainer_income_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("total_amount"))["t"] or 0
-        total_income_to_collect = membership_income_to_collect + personal_trainer_income_to_collect
 
         membership_base_income_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("plan_price"))["t"] or 0
         personal_trainer_base_income_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("base_amount"))["t"] or 0
-        total_base_income_to_collect = membership_base_income_to_collect + personal_trainer_base_income_to_collect
 
         membership_gst_to_collect = _MemberPayment.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
         personal_trainer_gst_to_collect = PTRenewal.objects.filter(paid_date__year=year, paid_date__month=month).aggregate(t=Sum("gst_amount"))["t"] or 0
-        total_gst_to_collect = membership_gst_to_collect + personal_trainer_gst_to_collect
+
+        # 2) Carry forward pending balance from previous months' invoices
+        import datetime as _dt
+        from apps.members.models import InstallmentPayment as _InstallmentPayment
+        first_of_month = _dt.date(year, month, 1)
+        carryover_total = carryover_base = carryover_gst = 0
+
+        for mp in _MemberPayment.objects.filter(paid_date__lt=first_of_month):
+            collected_before = float(mp.installment_payments.filter(
+                paid_date__lt=first_of_month
+            ).aggregate(t=Sum("amount"))["t"] or 0)
+            pending = float(mp.total_with_gst) - collected_before
+            if pending > 0.01:
+                gst = float(mp.gst_amount)
+                # GST is paid first; determine how much base & GST are still pending
+                pending_gst = max(gst - collected_before, 0)
+                pending_base = pending - pending_gst
+                carryover_total += pending
+                carryover_base += pending_base
+                carryover_gst += pending_gst
+
+        for ptr in PTRenewal.objects.filter(paid_date__lt=first_of_month):
+            if not ptr.invoice_number:
+                continue
+            collected_before = float(Income.objects.filter(
+                invoice_number=ptr.invoice_number, date__lt=first_of_month
+            ).aggregate(t=Sum("amount"))["t"] or 0)
+            pending = float(ptr.total_amount) - collected_before
+            if pending > 0.01:
+                gst = float(ptr.gst_amount)
+                # GST is paid first; determine how much base & GST are still pending
+                pending_gst = max(gst - collected_before, 0)
+                pending_base = pending - pending_gst
+                carryover_total += pending
+                carryover_base += pending_base
+                carryover_gst += pending_gst
+
+        total_income_to_collect = float(membership_income_to_collect) + float(personal_trainer_income_to_collect) + carryover_total
+        total_base_income_to_collect = float(membership_base_income_to_collect) + float(personal_trainer_base_income_to_collect) + carryover_base
+        total_gst_to_collect = float(membership_gst_to_collect) + float(personal_trainer_gst_to_collect) + carryover_gst
         return Response({
             "gym":           gym,
             "month":         month,

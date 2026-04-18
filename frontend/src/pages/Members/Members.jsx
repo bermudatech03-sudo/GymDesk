@@ -1107,6 +1107,8 @@ export default function Members() {
         api.get("/members/diet-plans/"),
       ]);
       setMembers(mRes.data.results || mRes.data);
+      console.log("Members loaded:", mRes.data);
+      console.log("Members Result data", mRes.data.results);
       setCount(mRes.data.count || 0);
       setPlans(pRes.data.results || pRes.data);
       setDietPlans(Array.isArray(dRes.data) ? dRes.data : (dRes.data.results ?? []));

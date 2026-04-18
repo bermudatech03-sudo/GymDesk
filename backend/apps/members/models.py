@@ -19,7 +19,7 @@ class Member(models.Model):
     GENDER = [("Male","Male"),("Female","Female"),("Other","Other")]
     STATUS = [("active","Active"),("expired","Expired"),("cancelled","Cancelled"),("paused","Paused")]
     FOODTYPE = [("veg","Vegetarian"),("nonveg","Non-Vegetarian"),("vegan","Vegan"),("other","Other")]
-    PLANTYPE = [("basic","Basic"),("standard","Standard"),("premium","Premium")]
+    PLANTYPE = [("basic","Basic"),("standard","Standard"),("premium","Premium"),("dietonly-standard","Standard (Diet Only)")]
     name         = models.CharField(max_length=150)
     phone        = models.CharField(max_length=15, unique=True)
     email        = models.EmailField(blank=True,null = True)
@@ -45,7 +45,7 @@ class Member(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.phone})"
+        return f"{self.name} ({self.phone}) {self.total_paid()} paid, {self.balance_due()} due"
 
     def days_until_expiry(self):
         if self.renewal_date:

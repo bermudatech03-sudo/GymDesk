@@ -27,6 +27,7 @@ def _calc_gst(base_price):
     base    = Decimal(str(base_price)).quantize(Decimal("0.01"), ROUND_HALF_UP)
     gst_amt = (base * rate / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
     total   = base + gst_amt
+    print(total)
     return base, gst_amt, total, rate
 
 def _invoice_number(member_id, date, suffix=""):

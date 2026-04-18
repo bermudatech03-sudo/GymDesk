@@ -98,6 +98,10 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
         : 0;
       set("amount_paid", (planWithGst + newDietGst).toFixed(2));
     }
+    if (!isEdit && form.plan_type === "dietonly-standard") {
+      const newDietGst = dietId ? parseFloat((dietBaseAmt * (1 + gymGstRate / 100)).toFixed(2)) : 0;
+      set("amount_paid", (planWithGst + newDietGst).toFixed(2));
+    }
   };
 
   const submit = async (e) => {
@@ -238,6 +242,7 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
                   <option value="basic">Basic</option>
                   <option value="standard">Standard — includes Personal Trainer</option>
                   <option value="premium">Premium — includes Personal Trainer + Diet Plan</option>
+                  <option value="dietonly-standard">Standard (Diet Only) — no Personal Trainer, includes Diet Plan</option>
                 </select>
               </div>
             )}
@@ -267,6 +272,17 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
               </div>
             )} */}
             {form.plan_type === "premium" && (
+              <div className="form-group">
+                <label className="form-label">Diet Plan</label>
+                <select className="form-input" value={form.diet || ""} onChange={e => handleDietChange(e.target.value)}>
+                  <option value="">No Diet Plan</option>
+                  {dietPlans.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {form.plan_type === "dietonly-standard" && (
               <div className="form-group">
                 <label className="form-label">Diet Plan</label>
                 <select className="form-input" value={form.diet || ""} onChange={e => handleDietChange(e.target.value)}>
@@ -1107,6 +1123,8 @@ export default function Members() {
         api.get("/members/diet-plans/"),
       ]);
       setMembers(mRes.data.results || mRes.data);
+      console.log("Members loaded:", mRes.data);
+      console.log("Members Result data", mRes.data.results);
       setCount(mRes.data.count || 0);
       setPlans(pRes.data.results || pRes.data);
       setDietPlans(Array.isArray(dRes.data) ? dRes.data : (dRes.data.results ?? []));

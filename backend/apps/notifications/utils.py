@@ -21,11 +21,26 @@ TEMPLATES = {
 }
 
 
+_TRIGGER_SETTING_KEY = {
+    "enrollment":      "NOTIFY_ENROLLMENT",
+    "renewal_confirm": "NOTIFY_RENEWAL_CONFIRM",
+    "renewal_remind":  "NOTIFY_RENEWAL_REMIND",
+    "expiry":          "NOTIFY_EXPIRY",
+    "absent":          "NOTIFY_ABSENT",
+}
+
+
 def send_notification(member, trigger_type: str):
     """
     Builds the message and inserts a Notification row with status='pending'.
     The post_save signal in signals.py handles the actual WhatsApp dispatch automatically.
+    Skips silently if the corresponding WhatsApp notification toggle is disabled.
     """
+    from apps.finances.gst_utils import is_notify_enabled
+    setting_key = _TRIGGER_SETTING_KEY.get(trigger_type)
+    if setting_key and not is_notify_enabled(setting_key):
+        return
+
     template = TEMPLATES.get(trigger_type, "Hi {name}.")
     date = str(timezone.now().date()) if trigger_type == "absent" else str(member.renewal_date or "")
     body = template.format(
@@ -51,7 +66,12 @@ def send_staff_notification(staff, trigger_type: str):
     """
     Sends a WhatsApp notification to a staff member and to the admin
     about the staff member's absence.
+    Skips silently if NOTIFY_STAFF_ABSENT is disabled.
     """
+    from apps.finances.gst_utils import is_notify_enabled
+    if not is_notify_enabled("NOTIFY_STAFF_ABSENT"):
+        return
+
     today = str(timezone.now().date())
     phone = str(staff.phone or "").strip().replace(" ", "").replace("-", "")
     if phone and not phone.startswith("91"):

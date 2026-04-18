@@ -30,8 +30,12 @@ def notify_members_on_new_plan(sender, instance, created, **kwargs):
     """
     Fires when a new MembershipPlan is saved for the first time.
     Queues a WhatsApp notification to every active member.
+    Skips if NOTIFY_NEW_PLAN is disabled.
     """
     if not created:
+        return
+    from apps.finances.gst_utils import is_notify_enabled
+    if not is_notify_enabled("NOTIFY_NEW_PLAN"):
         return
     from apps.members.models import Member
     from apps.enquiries.models import Enquiry

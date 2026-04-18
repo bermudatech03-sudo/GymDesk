@@ -8,11 +8,14 @@ def is_valid_phone(value):
 
 def is_valid_domain(email):
     try:
-        domain = email.split('@')[1]
-        print(domain)
-        if domain == "gmail.com":
-            return True
-        elif domain == "yahoo.com":
+        if email:
+            domain = email.split('@')[1]
+            if domain == "gmail.com":
+                return True
+            elif domain == "yahoo.com":
+                return True
+        elif not email:
             return True
     except:
+        print("came here")
         return False

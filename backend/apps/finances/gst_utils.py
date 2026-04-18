@@ -11,6 +11,11 @@ def get_setting(key, default=""):
         return default
 
 
+def is_notify_enabled(setting_key):
+    """Return True if the WhatsApp notification toggle is on (default: True)."""
+    return get_setting(setting_key, "true").lower() not in ("false", "0", "no")
+
+
 def get_gst_rate():
     return Decimal(get_setting("GST_RATE", "18"))
 

@@ -424,6 +424,7 @@ function MemberModal({ member, plans, dietPlans: initialDietPlans, onClose, onSa
 /* ─── Renew modal ──────────────────────────────────── */
 function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, onSave }) {
   const [planId, setPlanId] = useState(member.plan != null ? String(member.plan) : "");
+  const [planType, setPlanType] = useState(member.plan_type || "basic");
   const [dietId, setDietId] = useState(member.diet != null ? String(member.diet) : "");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -474,6 +475,7 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
     try {
       const res = await api.post(`/members/list/${member.id}/renew/`, {
         plan_id: planId || undefined,
+        plan_type: planType,
         diet_id: dietId ? Number(dietId) : null,
         amount_paid: amount,
         notes,
@@ -517,6 +519,20 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
                 </option>
               ))}
             </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Plan Type</label>
+            <select className="form-input" value={planType} onChange={e => setPlanType(e.target.value)}>
+              <option value="basic">Basic</option>
+              <option value="standard">Standard</option>
+              <option value="premium">Premium</option>
+              <option value="dietonly-standard">Standard (Diet Only)</option>
+            </select>
+            {planType !== (member.plan_type || "basic") && (
+              <span style={{ fontSize: 11, color: "var(--amber, orange)", marginTop: 3, display: "block" }}>
+                Plan type will change from {member.plan_type || "basic"} to {planType} after current plan ends.
+              </span>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label">Diet Plan</label>

@@ -336,6 +336,11 @@ class MemberViewSet(viewsets.ModelViewSet):
         if s.validated_data.get("plan_id"):
             member.plan = MembershipPlan.objects.get(pk=s.validated_data["plan_id"])
 
+        # Allow caller to change plan_type on renewal
+        new_plan_type = s.validated_data.get("plan_type")
+        if new_plan_type:
+            member.plan_type = new_plan_type
+
         old_renewal = member.renewal_date
         amount_paid = Decimal(str(s.validated_data["amount_paid"]))
 

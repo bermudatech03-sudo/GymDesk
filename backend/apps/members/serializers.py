@@ -133,6 +133,7 @@ class EnrollSerializer(serializers.Serializer):
 
 class RenewSerializer(serializers.Serializer):
     plan_id     = serializers.IntegerField(required=False, allow_null=True)
+    plan_type   = serializers.CharField(required=False, allow_blank=True, default="")
     amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2)
     notes       = serializers.CharField(required=False, allow_blank=True, default="")
     mode_of_payment   = serializers.CharField(required=False, default="cash")

@@ -351,7 +351,7 @@ function PTRenewalModal({ assignment, onClose, onSave }) {
 }
 
 /* ─── Assignment Modal ─────────────────────────────────────────────────────── */
-function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onSave, newMemberId, pendingMember }) {
+function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onSave, newMemberId, newPlanId, pendingMember, pendingRenewal, renewMemberId }) {
   const isEdit = !!assignment?.id;
 
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
@@ -380,7 +380,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
       };
     }
     return {
-      member: newMemberId || "", trainer: "", plan: "",
+      member: newMemberId || "", trainer: "", plan: newPlanId || "",
       startingtime: "06:00", endingtime: "07:00",
       working_days: [0, 1, 2, 3, 4, 5, 6],
     };
@@ -405,9 +405,11 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   useEffect(() => {
     if (newMemberId && !isEdit) {
       const found = eligibleMembers.find(m => String(m.id) === String(newMemberId));
-      if (found?.plan) set("plan", found.plan);
+      // Prefer explicit planId from URL, fall back to member's current plan
+      if (newPlanId) set("plan", newPlanId);
+      else if (found?.plan) set("plan", found.plan);
     }
-  }, [newMemberId, eligibleMembers, isEdit]);
+  }, [newMemberId, newPlanId, eligibleMembers, isEdit]);
 
   const handleMemberChange = (memberId) => {
     set("member", memberId);
@@ -418,13 +420,24 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
   const selectedTrainer   = trainers.find(t => String(t.id) === String(form.trainer));
   const selectedMemberObj = allMembers.find(m => String(m.id) === String(form.member));
-  const memberPlanId      = pendingMember ? pendingMember.plan : selectedMemberObj?.plan;
+  const memberPlanId      = pendingMember ? pendingMember.plan
+                          : (pendingRenewal?.plan_id || newPlanId || selectedMemberObj?.plan);
   const memberPlan        = plans.find(p => String(p.id) === String(memberPlanId));
   const planWithGst       = parseFloat(memberPlan?.price_with_gst ?? memberPlan?.price ?? 0);
   const ptFee             = parseFloat(selectedTrainer?.personal_trainer_amt ?? 0);
 
   // Prorate PT fee by actual days that will be assigned (same logic as PT renewal)
-  const memberRenewalDate = pendingMember?.renewal_date || selectedMemberObj?.renewal_date;
+  // For deferred renewal: member hasn't been renewed yet, so estimate future renewal date
+  // from the plan's duration_days (renewal will set renewal_date = today + duration_days)
+  const memberRenewalDate = (() => {
+    if (pendingMember?.renewal_date) return pendingMember.renewal_date;
+    if (pendingRenewal && memberPlan?.duration_days) {
+      const future = new Date();
+      future.setDate(future.getDate() + memberPlan.duration_days);
+      return future.toISOString().slice(0, 10);
+    }
+    return selectedMemberObj?.renewal_date;
+  })();
   const ptDays = (() => {
     if (!memberRenewalDate) return 30;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -437,9 +450,12 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   const ptFeeWithGst     = proratedPtFee + ptFeeGst;
 
   // Determine if the member being assigned has a diet plan
+  // For deferred renewal: only premium/dietonly-standard include diet
   const memberHasDiet = pendingMember
     ? Boolean(pendingMember.diet)
-    : Boolean(selectedMemberObj?.diet_id);
+    : pendingRenewal
+      ? (pendingRenewal.plan_type === "premium" || pendingRenewal.plan_type === "dietonly-standard") && Boolean(pendingRenewal.diet_id)
+      : Boolean(selectedMemberObj?.diet_id);
   const proratedDietBaseAmt = memberHasDiet && ptDays < 30
     ? parseFloat((dietBaseAmt / 30 * ptDays).toFixed(2))
     : dietBaseAmt;
@@ -473,7 +489,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!pendingMember && !form.member) { toast.error("Member is required."); return; }
+    if (!pendingMember && !renewMemberId && !form.member) { toast.error("Member is required."); return; }
     if (!form.trainer)                  { toast.error("Trainer is required."); return; }
     if (form.working_days.length === 0) { toast.error("Select at least one working day."); return; }
     setSaving(true);
@@ -542,36 +558,65 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
           return;
         }
         onSave();
-      } else {
-        // Existing member flow
-        const aRes = await api.post("/members/assign-trainer/", {
-          member:       Number(form.member),
-          trainer:      Number(form.trainer),
-          plan:         form.plan ? Number(form.plan) : null,
-          startingtime: form.startingtime,
-          endingtime:   form.endingtime,
-          working_days: daysToStr(form.working_days),
+      } else if (pendingRenewal && renewMemberId) {
+        // Deferred renewal + trainer assignment flow
+        // Step 1: Execute the deferred renewal
+        const renewRes = await api.post(`/members/list/${renewMemberId}/renew/`, {
+          plan_id:         pendingRenewal.plan_id,
+          plan_type:       pendingRenewal.plan_type,
+          diet_id:         pendingRenewal.diet_id,
+          amount_paid:     pendingRenewal.amount_paid,
+          notes:           pendingRenewal.notes || "",
+          mode_of_payment: pendingRenewal.mode_of_payment || "cash",
         });
 
+        // Step 2: Assign trainer (include PT fee so backend handles it in one transaction)
         const collectAmt = parseFloat(ptAmountToCollect || 0);
-        if (collectAmt > 0) {
-          try {
-            await api.post(`/members/list/${form.member}/pay-balance/`, {
-              amount_paid:     collectAmt,
-              mode_of_payment: modeOfPayment,
-              notes:           "PT fee collected at assignment",
-            });
-            toast.success(`Trainer assigned! ₹${fmtD(collectAmt)} PT fee recorded.`);
-          } catch {
-            toast.success("Trainer assigned!");
-            toast.error("PT fee collection failed — record it manually in Payments.");
-          }
-        } else {
-          toast.success("Trainer assigned!");
+        const aRes = await api.post("/members/assign-trainer/", {
+          member:          Number(renewMemberId),
+          trainer:         Number(form.trainer),
+          plan:            form.plan ? Number(form.plan) : null,
+          startingtime:    form.startingtime,
+          endingtime:      form.endingtime,
+          working_days:    daysToStr(form.working_days),
+          amount_paid:     collectAmt,
+          mode_of_payment: modeOfPayment,
+          notes:           "PT fee collected at renewal upgrade",
+        });
+
+        toast.success(
+          collectAmt > 0
+            ? `Renewed & trainer assigned! ₹${fmtD(collectAmt)} PT fee recorded.`
+            : "Renewed & trainer assigned!"
+        );
+        sessionStorage.removeItem("pendingRenewal");
+        if (aRes.data?.bill) {
+          setAssignBill(aRes.data.bill);
+          return;
         }
+        onSave();
+      } else {
+        // Existing member flow (non-renewal)
+        const collectAmt = parseFloat(ptAmountToCollect || 0);
+        const aRes = await api.post("/members/assign-trainer/", {
+          member:          Number(form.member),
+          trainer:         Number(form.trainer),
+          plan:            form.plan ? Number(form.plan) : null,
+          startingtime:    form.startingtime,
+          endingtime:      form.endingtime,
+          working_days:    daysToStr(form.working_days),
+          amount_paid:     collectAmt,
+          mode_of_payment: modeOfPayment,
+          notes:           collectAmt > 0 ? "PT fee collected at assignment" : "",
+        });
+
+        toast.success(
+          collectAmt > 0
+            ? `Trainer assigned! ₹${fmtD(collectAmt)} PT fee recorded.`
+            : "Trainer assigned!"
+        );
         if (aRes.data?.bill) {
           const raw = aRes.data.bill;
-          // Recompute totals to show only the additional fees (PT + diet)
           const ptBase   = parseFloat(raw.pt_fee || 0);
           const dietBase = parseFloat(raw.diet_plan_amount || 0);
           const addBase  = ptBase + dietBase;
@@ -620,6 +665,17 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
           </div>
         )}
 
+        {pendingRenewal && selectedMemberObj && (
+          <div style={{
+            background: "rgba(45,255,195,.08)", color: "var(--teal)",
+            border: "1px solid rgba(45,255,195,.3)", borderRadius: 8, padding: "10px 14px",
+            marginBottom: 14, fontSize: 13,
+          }}>
+            Renewing <strong>{selectedMemberObj.name}</strong> with plan upgrade — assign a trainer to complete renewal.
+            <br /><span style={{ fontSize: 11, color: "var(--text-muted)" }}>Cancelling will discard the renewal.</span>
+          </div>
+        )}
+
         {!pendingMember && !isEdit && eligibleMembers.length === 0 && (
           <div style={{
             background: "var(--badge-yellow-bg, #fef3c7)", color: "#92400e",
@@ -651,6 +707,15 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
                   {pendingMember.phone}
                   {memberPlan ? ` · ${memberPlan.name}` : ""}
                   {" · "}<span style={{ textTransform: "capitalize" }}>{pendingMember.plan_type}</span>
+                </div>
+              </div>
+            ) : renewMemberId && selectedMemberObj ? (
+              <div style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+                <div style={{ fontWeight: 600, color: "var(--text1)" }}>{selectedMemberObj.name}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
+                  {selectedMemberObj.phone}
+                  {memberPlan ? ` · ${memberPlan.name}` : ""}
+                  {" · Upgrading to "}<span style={{ textTransform: "capitalize" }}>{pendingRenewal?.plan_type || "standard"}</span>
                 </div>
               </div>
             ) : (
@@ -980,10 +1045,12 @@ export default function TrainerAssignments() {
   const navigate = useNavigate();
   const location = useLocation();
   const urlParams   = new URLSearchParams(location.search);
-  const newMemberId = urlParams.get("newMember");
-  const fromPage    = urlParams.get("from");
-  const isPending   = urlParams.get("pending") === "1";
-  const prevType    = urlParams.get("prevType");
+  const newMemberId   = urlParams.get("newMember");
+  const newPlanId     = urlParams.get("planId");
+  const fromPage      = urlParams.get("from");
+  const isPending     = urlParams.get("pending") === "1";
+  const prevType      = urlParams.get("prevType");
+  const isRenewUpgrade = urlParams.get("renewUpgrade") === "1";
 
   const [assignments, setAssignments]   = useState([]);
   const [allMembers, setAllMembers]     = useState([]);
@@ -997,6 +1064,7 @@ export default function TrainerAssignments() {
   const [filterTrainer, setFilterTrainer] = useState("");
   const [confirmState, setConfirmState] = useState(null);
   const [pendingMember, setPendingMember] = useState(null);
+  const [pendingRenewal, setPendingRenewal] = useState(null);
 
   const eligibleMembers = allMembers.filter(m => m.plan_allows_trainer);
 
@@ -1019,13 +1087,23 @@ export default function TrainerAssignments() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([
-      api.get("/members/list/", { params: { status: "active" } }),
+    const fetches = [
+      api.get("/members/list/", { params: { status: "active", page_size: 9999 } }),
       api.get("/staff/members/", { params: { role: "trainer", status: "active" } }),
       api.get("/members/plans/"),
-    ]).then(([mRes, tRes, pRes]) => {
+    ];
+    // For renewUpgrade the member is still basic — ensure we fetch them specifically
+    if (newMemberId) {
+      fetches.push(api.get(`/members/list/${newMemberId}/`).catch(() => null));
+    }
+    Promise.all(fetches).then(([mRes, tRes, pRes, specificMemberRes]) => {
       const get = r => Array.isArray(r.data) ? r.data : r.data?.results ?? [];
-      setAllMembers(get(mRes));
+      let members = get(mRes);
+      // Ensure the specific member is included in the list
+      if (specificMemberRes?.data && !members.find(m => m.id === specificMemberRes.data.id)) {
+        members = [...members, specificMemberRes.data];
+      }
+      setAllMembers(members);
       setTrainers(get(tRes));
       setPlans(get(pRes));
     }).catch(() => toast.error("Failed to load reference data."));
@@ -1048,6 +1126,19 @@ export default function TrainerAssignments() {
       }
     }
   }, [isPending]);
+
+  useEffect(() => {
+    if (isRenewUpgrade && newMemberId) {
+      const stored = sessionStorage.getItem("pendingRenewal");
+      if (stored) {
+        try {
+          setPendingRenewal(JSON.parse(stored));
+        } catch {
+          sessionStorage.removeItem("pendingRenewal");
+        }
+      }
+    }
+  }, [isRenewUpgrade, newMemberId]);
 
   const handlePayPtTrainerFee = (assignment) => {
     const pending = assignment.pending_pt_renewal_trainer_amount || 0;
@@ -1462,18 +1553,26 @@ export default function TrainerAssignments() {
           trainers={trainers}
           plans={plans}
           newMemberId={modal === "new" ? newMemberId : null}
+          newPlanId={modal === "new" ? newPlanId : null}
           pendingMember={modal === "new" ? pendingMember : null}
-          onClose={async () => {
-            // If this was a basic→standard/premium upgrade and user cancels, revert plan_type
-            if (modal === "new" && newMemberId && prevType) {
-              try { await api.patch(`/members/list/${newMemberId}/`, { plan_type: prevType }); } catch {}
+          pendingRenewal={modal === "new" ? pendingRenewal : null}
+          renewMemberId={modal === "new" && isRenewUpgrade ? newMemberId : null}
+          onClose={() => {
+            // Deferred renewal: nothing was saved yet, just clean up and navigate back
+            if (isRenewUpgrade) {
+              sessionStorage.removeItem("pendingRenewal");
               navigate(`/${fromPage || "members"}`);
+              return;
             }
             setModal(null);
           }}
           onSave={() => {
             setModal(null);
             setPendingMember(null);
+            if (pendingRenewal) {
+              sessionStorage.removeItem("pendingRenewal");
+              setPendingRenewal(null);
+            }
             load();
             if (fromPage) navigate(`/${fromPage}`);
           }}

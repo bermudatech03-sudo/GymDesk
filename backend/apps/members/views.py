@@ -336,19 +336,30 @@ class MemberViewSet(viewsets.ModelViewSet):
         if s.validated_data.get("plan_id"):
             member.plan = MembershipPlan.objects.get(pk=s.validated_data["plan_id"])
 
-        # Allow caller to change plan_type on renewal
-        new_plan_type = s.validated_data.get("plan_type")
-        if new_plan_type:
-            member.plan_type = new_plan_type
+        # Determine new plan type and set flags accordingly
+        new_plan_type = s.validated_data.get("plan_type") or member.plan_type or "basic"
+        member.plan_type = new_plan_type
+
+        if new_plan_type == "basic":
+            member.personal_trainer = False
+            member.diet = None
+        elif new_plan_type == "standard":
+            member.personal_trainer = True
+            member.diet = None
+        elif new_plan_type == "premium":
+            member.personal_trainer = True
+            if "diet_id" in request.data:
+                new_diet_id = request.data.get("diet_id") or None
+                member.diet = DietPlan.objects.filter(pk=new_diet_id).first() if new_diet_id else None
+        elif new_plan_type == "dietonly-standard":
+            member.personal_trainer = False
+            if "diet_id" in request.data:
+                new_diet_id = request.data.get("diet_id") or None
+                member.diet = DietPlan.objects.filter(pk=new_diet_id).first() if new_diet_id else None
 
         old_renewal = member.renewal_date
         amount_paid = Decimal(str(s.validated_data["amount_paid"]))
-
-        # Allow caller to set/change/remove diet on renewal
-        if "diet_id" in request.data:
-            new_diet_id = request.data.get("diet_id") or None
-            member.diet = DietPlan.objects.filter(pk=new_diet_id).first() if new_diet_id else None
-            member.save()
+        member.save()
 
         member.renew()
 

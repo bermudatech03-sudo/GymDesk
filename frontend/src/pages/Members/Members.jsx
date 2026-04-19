@@ -458,7 +458,8 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
     plans.find(p => String(p.id) === String(member.plan));
 
   const planBase = parseFloat(activePlan?.price ?? 0);
-  const dietWithGst = dietId ? dietBase * (1 + gstRate / 100) : 0;
+  const dietWithGst = (planType === "premium" || planType === "dietonly-standard") && dietId
+    ? dietBase * (1 + gstRate / 100) : 0;
   // Recompute from base + diet using current GST rate so the two add up consistently
   const planWithGst = planBase * (1 + gstRate / 100);
   const planTotal = planWithGst + dietWithGst;
@@ -473,37 +474,64 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
     setUserEdited(false);
   };
 
+  const handlePlanTypeChange = (newType) => {
+    setPlanType(newType);
+    if (newType === "basic" || newType === "standard") {
+      setDietId("");
+    }
+    setUserEdited(false);
+  };
+
   const balance = Math.max(0, planTotal - parseFloat(amount || 0));
 
   const submit = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      const res = await api.post(`/members/list/${member.id}/renew/`, {
-        plan_id: planId || undefined,
-        plan_type: planType,
-        diet_id: dietId ? Number(dietId) : null,
-        amount_paid: amount,
-        notes,
-        mode_of_payment: modeOfPayment,
-      });
-      toast.success(balance > 0
-        ? `Renewed! Balance ₹${balance} recorded.`
-        : "Renewed! Full payment recorded in Finances.");
-      let billData = res.data.bill ?? null;
-      if (billData) {
-        try {
-          const hRes = await api.get("/members/payments/", { params: { member: member.id } });
-          const raw = hRes.data;
-          const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
-          list.sort((a, b) => new Date(a.paid_date) - new Date(b.paid_date));
-          const listWithInsts = list.map(p => ({
-            ...p,
-            cycle_installments: p.installment_payments || [],
-          }));
-          billData = { ...billData, installments: listWithInsts };
-        } catch (_) { /* non-fatal */ }
+      // Check if plan type upgrade requires trainer assignment
+      const prevType = member.plan_type || "basic";
+      const hadTrainer = prevType === "standard" || prevType === "premium";
+      const needsTrainer = !hadTrainer && (planType === "standard" || planType === "premium");
+
+      if (needsTrainer) {
+        // Defer renewal — don't save yet, store data for trainer assignment step
+        const renewalData = {
+          plan_id: planId || undefined,
+          plan_type: planType,
+          diet_id: dietId ? Number(dietId) : null,
+          amount_paid: amount,
+          notes,
+          mode_of_payment: modeOfPayment,
+        };
+        sessionStorage.setItem("pendingRenewal", JSON.stringify(renewalData));
+        onSave({ renewUpgrade: true, memberId: member.id, planId: planId || member.plan, prevType });
+      } else {
+        const res = await api.post(`/members/list/${member.id}/renew/`, {
+          plan_id: planId || undefined,
+          plan_type: planType,
+          diet_id: dietId ? Number(dietId) : null,
+          amount_paid: amount,
+          notes,
+          mode_of_payment: modeOfPayment,
+        });
+        toast.success(balance > 0
+          ? `Renewed! Balance ₹${balance} recorded.`
+          : "Renewed! Full payment recorded in Finances.");
+        let billData = res.data.bill ?? null;
+        if (billData) {
+          try {
+            const hRes = await api.get("/members/payments/", { params: { member: member.id } });
+            const raw = hRes.data;
+            const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
+            list.sort((a, b) => new Date(a.paid_date) - new Date(b.paid_date));
+            const listWithInsts = list.map(p => ({
+              ...p,
+              cycle_installments: p.installment_payments || [],
+            }));
+            billData = { ...billData, installments: listWithInsts };
+          } catch (_) { /* non-fatal */ }
+        }
+        onSave(billData);
       }
-      onSave(billData);
     } catch (err) {
       toast.error(err.response?.data?.detail || "Renewal failed");
     } finally { setSaving(false); }
@@ -527,7 +555,7 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
           </div>
           <div className="form-group">
             <label className="form-label">Plan Type</label>
-            <select className="form-input" value={planType} onChange={e => setPlanType(e.target.value)}>
+            <select className="form-input" value={planType} onChange={e => handlePlanTypeChange(e.target.value)}>
               <option value="basic">Basic</option>
               <option value="standard">Standard</option>
               <option value="premium">Premium</option>
@@ -539,18 +567,20 @@ function RenewModal({ member, plans, dietPlans: initialDietPlans = [], onClose, 
               </span>
             )}
           </div>
-          <div className="form-group">
-            <label className="form-label">Diet Plan</label>
-            <select className="form-input" value={dietId} onChange={e => setDietId(e.target.value)}>
-              <option value="">No Diet Plan</option>
-              {dietPlans.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3, display: "block" }}>
-              Diet fee will be added to the renewal total.
-            </span>
-          </div>
+          {(planType === "premium" || planType === "dietonly-standard") && (
+            <div className="form-group">
+              <label className="form-label">Diet Plan</label>
+              <select className="form-input" value={dietId} onChange={e => setDietId(e.target.value)}>
+                <option value="">No Diet Plan</option>
+                {dietPlans.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 11, color: "var(--text3)", marginTop: 3, display: "block" }}>
+                Diet fee will be added to the renewal total.
+              </span>
+            </div>
+          )}
           {planTotal > 0 && (
             <div style={{
               background: "var(--surface2)", borderRadius: 8, padding: "10px 14px", fontSize: 12,
@@ -969,7 +999,8 @@ function ViewMemberModal({ member: m, onClose, onEdit, onRenew, onPayments, onCa
         {/* Actions */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn btn-sm btn-secondary" onClick={onEdit}>Edit</button>
-          <button className="btn btn-sm" style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }} onClick={onRenew}>Renew</button>
+          <button className="btn btn-sm" style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }}
+            disabled={m.days_until_expiry != null && m.days_until_expiry > 0} onClick={onRenew}>Renew</button>
           <button className="btn btn-sm" style={{ background: "rgba(77,166,255,.12)", color: "var(--info)" }} onClick={onPayments}>
             Payments{(m.balance_due || 0) > 0 ? " ⚠" : ""}
           </button>
@@ -1186,8 +1217,14 @@ export default function Members() {
     const isNewEnroll = data && typeof data === "object" && "newMemberId" in data;
     const isPending = data && typeof data === "object" && data.isPending === true;
     const isUpgrade = data && typeof data === "object" && "upgradeMemberId" in data;
+    const isRenewUpgrade = data && typeof data === "object" && data.renewUpgrade === true;
 
     closeModal();
+
+    if (isRenewUpgrade) {
+      navigate(`/trainer-assignments?newMember=${data.memberId}&planId=${data.planId || ""}&from=members&prevType=${data.prevType || "basic"}&renewUpgrade=1`);
+      return;
+    }
 
     if (isUpgrade) {
       if (data.upgradeType === "diet_only") {
@@ -1472,6 +1509,7 @@ export default function Members() {
                           onClick={() => { setSelected(m); setModal("edit"); }}>Edit</button>
                         <button className="btn btn-sm"
                           style={{ background: "rgba(45,255,195,.12)", color: "var(--teal)" }}
+                          disabled={m.days_until_expiry != null && m.days_until_expiry > 0}
                           onClick={() => { setSelected(m); setModal("renew"); }}>Renew</button>
                         <button className="btn btn-sm"
                           style={{ background: "rgba(77,166,255,.12)", color: "var(--info)" }}

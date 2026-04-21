@@ -1,10 +1,11 @@
 import logging
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Sum, Q
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
@@ -27,7 +28,6 @@ def _calc_gst(base_price):
     base    = Decimal(str(base_price)).quantize(Decimal("0.01"), ROUND_HALF_UP)
     gst_amt = (base * rate / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
     total   = base + gst_amt
-    print(total)
     return base, gst_amt, total, rate
 
 def _invoice_number(member_id, date, suffix=""):
@@ -99,8 +99,12 @@ def _record_income_for_installment(member, payment, installment):
     )
 
 def _create_installment(payment, member, amount, installment_type, notes="", mode_of_payment="cash"):
+    if amount > payment.balance:
+        raise serializers.ValidationError(
+            f"Installment amount ₹{amount} exceeds remaining balance of ₹{payment.balance}."
+        )
     balance_after = max(Decimal("0"), payment.balance - Decimal(str(amount)))
-
+    
     installment = InstallmentPayment.objects.create(
         payment          = payment,
         member           = member,
@@ -929,9 +933,6 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         from apps.finances.gst_utils import get_pt_payable_percent
         assignment = self.get_object()
 
-        if assignment.trainer_fee_paid:
-            return Response({"detail": "Trainer fee already paid for this member."}, status=400)
-
         pt_amt = assignment.trainer.personal_trainer_amt
         if not pt_amt or pt_amt <= 0:
             return Response({"detail": "This trainer has no PT fee configured."}, status=400)
@@ -939,18 +940,23 @@ class MemberTrainerAssignmentViewSet(viewsets.ModelViewSet):
         pt_payable_pct = get_pt_payable_percent()
         payable_amt    = (Decimal(str(pt_amt)) * pt_payable_pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-        Expenditure.objects.create(
-            category    = "salary",
-            description = f"PT Fee — {assignment.trainer.name} for {assignment.member.name}",
-            amount      = payable_amt,
-            date        = timezone.localdate(),
-            vendor      = assignment.trainer.name,
-            notes       = f"Trainer assignment ID: {assignment.id} | PT fee: ₹{pt_amt} × {pt_payable_pct}% = ₹{payable_amt} | Invoice: {assignment.member.payments.order_by('-created_at').values_list('invoice_number', flat=True).first() or ''}",
-        )
+        with transaction.atomic():
+            updated = TrainerAssignment.objects.filter(
+                pk=assignment.pk, trainer_fee_paid=False
+            ).update(trainer_fee_paid=True)
+            if not updated:
+                return Response({"detail": "Trainer fee already paid for this member."}, status=400)
 
-        assignment.trainer_fee_paid = True
-        assignment.save()
+            Expenditure.objects.create(
+                category    = "salary",
+                description = f"PT Fee — {assignment.trainer.name} for {assignment.member.name}",
+                amount      = payable_amt,
+                date        = timezone.localdate(),
+                vendor      = assignment.trainer.name,
+                notes       = f"Trainer assignment ID: {assignment.id} | PT fee: ₹{pt_amt} × {pt_payable_pct}% = ₹{payable_amt} | Invoice: {assignment.member.payments.order_by('-created_at').values_list('invoice_number', flat=True).first() or ''}",
+            )
 
+        assignment.refresh_from_db()
         return Response(TrainerAssignmentSerializer(assignment).data)
 
     @action(detail=True, methods=["post"], url_path="pay-pt-trainer-fee")

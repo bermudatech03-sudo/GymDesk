@@ -6,8 +6,8 @@ import "./Login.css";
 
 export default function Login() {
   const { login } = useAuth();
-  const navigate  = useNavigate();
-  const [form, setForm] = useState({ username:"", password:"" });
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
@@ -31,7 +31,7 @@ export default function Login() {
         <div className="login-logo">
           <div className="login-logo-mark">G</div>
           <div>
-            <div className="login-logo-name">GymPro CRM</div>
+            <h3 className="login-logo-name">Light Weight Fitness </h3>
             <div className="login-logo-sub">Management System</div>
           </div>
         </div>
@@ -47,7 +47,7 @@ export default function Login() {
               type="text"
               placeholder="admin"
               value={form.username}
-              onChange={e => setForm(p => ({...p, username:e.target.value}))}
+              onChange={e => setForm(p => ({ ...p, username: e.target.value }))}
               required
             />
           </div>
@@ -58,11 +58,11 @@ export default function Login() {
               type="password"
               placeholder="••••••••"
               value={form.password}
-              onChange={e => setForm(p => ({...p, password:e.target.value}))}
+              onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
               required
             />
           </div>
-          <button className="btn btn-primary btn-lg" style={{width:"100%", justifyContent:"center"}} disabled={loading}>
+          <button className="btn btn-primary btn-lg" style={{ width: "100%", justifyContent: "center" }} disabled={loading}>
             {loading ? <span className="spin">⟳</span> : "Sign In →"}
           </button>
         </form>

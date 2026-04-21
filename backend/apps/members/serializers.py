@@ -129,7 +129,10 @@ class EnrollSerializer(serializers.Serializer):
     
 
     def validate_phone(self, value):
-        return is_valid_phone(value)
+        value = is_valid_phone(value)
+        if Member.objects.filter(phone=value).exists():
+            raise serializers.ValidationError("A member with this phone number already exists.")
+        return value
 
 class RenewSerializer(serializers.Serializer):
     plan_id     = serializers.IntegerField(required=False, allow_null=True)

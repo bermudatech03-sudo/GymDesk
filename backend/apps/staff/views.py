@@ -398,7 +398,7 @@ class StaffViewSet(viewsets.ModelViewSet):
                             counts.get("overtime", 0) + counts.get("late_overtime", 0) +
                             counts.get("half", 0) * 0.5)
             att_pct        = round(days_present / working_days * 100, 1) if working_days > 0 else 0
-            billable_mins  = max(0, total_worked_mins + total_ot_mins - total_late_mins)
+            billable_mins  = max(0, total_worked_mins - total_late_mins)
             hours_pct      = round(billable_mins / total_scheduled_mins * 100, 1) if total_scheduled_mins > 0 else att_pct
             salary_payable = round(base_salary * hours_pct / 100, 2)
 
@@ -558,8 +558,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         total_worked_mins    = counts["total_worked_minutes"]
         total_scheduled_mins = counts["total_scheduled_minutes"]
         total_late_mins      = counts["total_late_minutes"]
-        total_ot_mins        = counts["total_ot_minutes"]
-        billable_mins        = max(0, total_worked_mins + total_ot_mins - total_late_mins)
+        billable_mins        = max(0, total_worked_mins - total_late_mins)
         hours_pct            = round(billable_mins / total_scheduled_mins * 100, 1) if total_scheduled_mins > 0 else att_pct
         salary_payable       = round(float(p.staff.salary) * hours_pct / 100, 2)
 

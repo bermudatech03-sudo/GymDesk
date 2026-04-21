@@ -14,8 +14,8 @@ def is_valid_domain(email):
                 return True
             elif domain == "yahoo.com":
                 return True
+            return False
         elif not email:
             return True
     except:
-        print("came here")
         return False

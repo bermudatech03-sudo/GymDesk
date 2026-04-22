@@ -7,10 +7,76 @@ from xhtml2pdf import pisa
 logger = logging.getLogger(__name__)
 
 
+def send_whatsapp_template(
+    to: str,
+    template_name: str,
+    language_code: str = "en",
+    body_params: list | None = None,
+    document_media_id: str | None = None,
+    document_filename: str | None = None,
+) -> dict:
+    """
+    Send a WhatsApp template message via Meta Cloud API.
+    Works outside the 24-hr session window.
+
+    - `body_params`: list of stringified values for {{1}}, {{2}}, ... in the body.
+    - `document_media_id`: if the template has a Document header, pass the uploaded media_id here.
+    """
+    access_token    = settings.META_WHATSAPP_ACCESS_TOKEN
+    phone_number_id = settings.META_WHATSAPP_PHONE_NUMBER_ID
+    if not access_token or not phone_number_id:
+        logger.error("META_WHATSAPP_ACCESS_TOKEN or META_WHATSAPP_PHONE_NUMBER_ID is not set in .env")
+        return {"success": False, "error": "Missing WhatsApp credentials in environment."}
+
+    components = []
+    if document_media_id:
+        header_doc = {"id": document_media_id}
+        if document_filename:
+            header_doc["filename"] = document_filename
+        components.append({
+            "type": "header",
+            "parameters": [{"type": "document", "document": header_doc}],
+        })
+    if body_params:
+        components.append({
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+        })
+
+    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+            "components": components,
+        },
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        response.raise_for_status()
+        logger.info(f"Template '{template_name}' sent to {to}")
+        return {"success": True, "data": response.json()}
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"WhatsApp template HTTP error ({template_name}): {e.response.text}")
+        return {"success": False, "error": e.response.text}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"WhatsApp template request failed ({template_name}): {e}")
+        return {"success": False, "error": str(e)}
+
+
 def send_whatsapp_message(to: str, message: str) -> dict:
     """
     Send a WhatsApp text message via Meta Cloud API.
     `to` must include country code with no + or spaces, e.g. "919876543210"
+    Only deliverable inside the 24-hr customer service window — use templates otherwise.
     """
     access_token    = settings.META_WHATSAPP_ACCESS_TOKEN
     phone_number_id = settings.META_WHATSAPP_PHONE_NUMBER_ID
@@ -611,11 +677,21 @@ _BILL_TRIGGER_SETTING_KEY = {
     "pt_balance": "NOTIFY_PT_RENEWAL",
 }
 
+_BILL_TRIGGER_LABEL = {
+    "enrollment": "enrollment",
+    "renewal":    "renewal",
+    "balance":    "balance payment",
+    "pt_renewal": "PT renewal",
+    "pt_balance": "PT balance payment",
+}
+
 
 def send_bill_on_whatsapp(phone: str, bill: dict, trigger_type: str) -> None:
     """
-    Full flow: generate PDF → upload to Meta → send as WhatsApp document.
-    Call this after enrollment or renewal.
+    Full flow: generate PDF → upload to Meta → send as WhatsApp template message
+    with a document header (`membership_bill` or `pt_bill`).
+    Works outside the 24-hr customer service window because it uses an approved
+    WhatsApp template.
     `phone` should already include country code e.g. "919876543210"
     """
     from apps.finances.gst_utils import is_notify_enabled
@@ -631,36 +707,57 @@ def send_bill_on_whatsapp(phone: str, bill: dict, trigger_type: str) -> None:
         logger.warning("send_bill_on_whatsapp: no bill data, skipping.")
         return
 
-    total = bill.get('total_with_gst') or bill.get('total_amount')
-    logger.info(f"send_bill_on_whatsapp: amount_paid={bill.get('amount_paid')}, balance={bill.get('balance')}, total={total}")
+    is_pt = trigger_type in ("pt_renewal", "pt_balance")
 
     # Step 1: generate PDF
-    is_pt = trigger_type in ("pt_renewal", "pt_balance")
     try:
         pdf_bytes = generate_pt_bill_pdf(bill) if is_pt else generate_bill_pdf(bill)
     except Exception as e:
         logger.error(f"Bill PDF generation failed: {e}")
         return
 
-    # Step 2: upload to Meta
+    # Step 2: upload to Meta media endpoint
     filename = f"{bill.get('invoice_number', 'bill')}.pdf"
     upload   = upload_whatsapp_media(pdf_bytes, filename)
     if not upload["success"]:
         logger.error(f"Bill PDF upload failed: {upload['error']}")
         return
 
-    # Step 3: send document
-    caption_map = {
-        "enrollment":  f"Welcome {bill.get('member_name', '')}! Your membership bill is attached.",
-        "renewal":     f"Hi {bill.get('member_name', '')}! Your renewal bill is attached.",
-        "balance":     f"Hi {bill.get('member_name', '')}! Your updated bill after the balance payment is attached.",
-        "pt_renewal":  f"Hi {bill.get('member_name', '')}! Your personal training renewal receipt is attached.",
-        "pt_balance":  f"Hi {bill.get('member_name', '')}! Your updated PT receipt after the balance payment is attached.",
-    }
-    caption = caption_map.get(trigger_type, "Your gym bill is attached.")
-    send_whatsapp_document(
-        to       = phone,
-        media_id = upload["media_id"],
-        filename = filename,
-        caption  = caption,
+    # Step 3: send template with document header
+    member_name = bill.get("member_name", "")
+    invoice_no  = bill.get("invoice_number", "")
+    amount_paid = _fmt_money(bill.get("amount_paid"))
+    balance     = _fmt_money(bill.get("balance"))
+
+    if is_pt:
+        template_name = "pt_bill"
+        total_val = _fmt_money(bill.get("total_amount") or bill.get("total_with_gst"))
+        body_params = [
+            member_name,
+            invoice_no,
+            str(bill.get("pt_start_date", "")),
+            str(bill.get("pt_end_date", "")),
+            total_val,
+            amount_paid,
+            balance,
+        ]
+    else:
+        template_name = "membership_bill"
+        total_val = _fmt_money(bill.get("total_with_gst") or bill.get("total_amount"))
+        body_params = [
+            member_name,
+            _BILL_TRIGGER_LABEL.get(trigger_type, "invoice"),
+            invoice_no,
+            total_val,
+            amount_paid,
+            balance,
+        ]
+
+    send_whatsapp_template(
+        to                = phone,
+        template_name     = template_name,
+        language_code     = "en",
+        body_params       = body_params,
+        document_media_id = upload["media_id"],
+        document_filename = filename,
     )

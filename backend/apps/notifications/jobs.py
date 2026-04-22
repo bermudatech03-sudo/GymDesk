@@ -134,9 +134,11 @@ def send_diet_notifications():
             Q(time__gte=window_start) | Q(time__lt=window_end)
         ).select_related("plan")
 
+    from apps.notifications.utils import TRIGGER_TEMPLATES
+    template_name = TRIGGER_TEMPLATES.get("diet_reminder", "")
+
     for item in items:
         members = Member.objects.filter(status="active", diet=item.plan)
-        notes_part = f" Note: {item.notes}." if item.notes else ""
         for member in members:
             phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
             if not phone:
@@ -145,8 +147,8 @@ def send_diet_notifications():
                 phone = f"91{phone}"
             message = (
                 f"Hi {member.name}, diet reminder! "
-                f"Time to have {item.quantity}{item.unit} of *{item.food}* ({item.calories} cal)."
-                f"{notes_part} Stay consistent with your diet plan!"
+                f"Time to have {item.quantity}{item.unit} of {item.food} ({item.calories} cal). "
+                f"Stay consistent with your diet plan!"
             )
             Notification.objects.create(
                 recipient_name=member.name,
@@ -154,6 +156,14 @@ def send_diet_notifications():
                 channel="whatsapp",
                 trigger_type="diet_reminder",
                 message=message,
+                template_name=template_name,
+                template_params=[
+                    member.name,
+                    str(item.quantity),
+                    str(item.unit),
+                    str(item.food),
+                    str(item.calories),
+                ],
                 status="pending",
             )
 
@@ -161,7 +171,7 @@ def send_diet_notifications():
 def retry_failed_notifications():
     import time
     from apps.notifications.models import Notification
-    from apps.notifications.whatsapp import send_whatsapp_message
+    from apps.notifications.whatsapp import send_whatsapp_message, send_whatsapp_template
 
     MAX_RETRIES = 3
     BATCH_SIZE  = 50   # send max 50 retries per run to avoid overloading Meta API
@@ -171,7 +181,15 @@ def retry_failed_notifications():
     for notif in failed:
         if not notif.recipient_phone:
             continue
-        result = send_whatsapp_message(to=notif.recipient_phone, message=notif.message)
+        if notif.template_name:
+            result = send_whatsapp_template(
+                to=notif.recipient_phone,
+                template_name=notif.template_name,
+                language_code=notif.language_code or "en",
+                body_params=list(notif.template_params or []),
+            )
+        else:
+            result = send_whatsapp_message(to=notif.recipient_phone, message=notif.message)
         if result["success"]:
             Notification.objects.filter(pk=notif.pk).update(
                 status="sent",

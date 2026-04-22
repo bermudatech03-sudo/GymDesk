@@ -15,7 +15,6 @@ from .models import Diet, DietPlan, Member, MembershipPlan, MemberPayment, Membe
 from .serializers import (DietSerializer, DietPlanSerializer, MemberSerializer, PlanSerializer, MemberPaymentSerializer,
     MemberAttendanceSerializer, EnrollSerializer, RenewSerializer, BalancePaymentSerializer,
     InstallmentPaymentSerializer, TrainerAssignmentSerializer, PTRenewalSerializer)
-from apps.notifications.utils import send_notification
 import logging
 
 from apps.finances.gst_utils import get_gst_rate as _get_gst_rate, get_gym_info as _gym_info
@@ -309,9 +308,8 @@ class MemberViewSet(viewsets.ModelViewSet):
             payment.refresh_from_db()
             bill_data = _build_bill(member, payment, _gym_info())
 
-        try: send_notification(member, "enrollment")
-        except Exception as e: logger.error(f"failed to send enrollment notification{e}")
-
+        # The `membership_bill` WhatsApp template carries the greeting + invoice PDF
+        # in a single message, so no separate text notification is needed here.
         try:
             from apps.notifications.whatsapp import send_bill_on_whatsapp
             phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")
@@ -396,12 +394,11 @@ class MemberViewSet(viewsets.ModelViewSet):
             )
             _record_income_for_installment(member, payment, installment)
 
-        try: send_notification(member, "renewal_confirm")
-        except: pass
-
         payment.refresh_from_db()
         bill_data = _build_bill(member, payment, _gym_info())
 
+        # The `membership_bill` template already contains the renewal confirmation
+        # wording + invoice PDF — no separate text notification is sent.
         try:
             from apps.notifications.whatsapp import send_bill_on_whatsapp
             phone = str(member.phone or "").strip().replace(" ", "").replace("-", "")

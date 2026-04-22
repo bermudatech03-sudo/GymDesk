@@ -7,8 +7,8 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from .models import Notification
-from .whatsapp import send_whatsapp_message
-from .utils import TEMPLATES
+from .whatsapp import send_whatsapp_message, send_whatsapp_template
+from .utils import TEMPLATES, TRIGGER_TEMPLATES
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def notify_members_on_new_plan(sender, instance, created, **kwargs):
     from apps.members.models import Member
     from apps.enquiries.models import Enquiry
     template = TEMPLATES["new_plan"]
-    description = f"{instance.description.strip()} " if instance.description.strip() else ""
+    template_name = TRIGGER_TEMPLATES.get("new_plan", "")
 
     recipients = []
     for member in Member.objects.filter(status="active").only("name", "phone"):
@@ -59,7 +59,6 @@ def notify_members_on_new_plan(sender, instance, created, **kwargs):
             plan_name=instance.name,
             duration=instance.duration_days,
             price=instance.price,
-            description=description,
         )
         Notification.objects.create(
             recipient_name=name,
@@ -67,6 +66,8 @@ def notify_members_on_new_plan(sender, instance, created, **kwargs):
             channel="whatsapp",
             trigger_type="new_plan",
             message=body,
+            template_name=template_name,
+            template_params=[name, instance.name, str(instance.duration_days), str(instance.price)],
             status="pending",
         )
 
@@ -89,9 +90,12 @@ def dispatch_whatsapp_on_create(sender, instance, created, **kwargs):
         )
         return
 
-    pk      = instance.pk
-    phone   = instance.recipient_phone
-    message = instance.message
+    pk            = instance.pk
+    phone         = instance.recipient_phone
+    message       = instance.message
+    template_name = instance.template_name or ""
+    template_params = list(instance.template_params or [])
+    language_code = instance.language_code or "en"
 
     def _send():
         # Small delay to avoid hammering Meta API when bulk-creating
@@ -99,7 +103,15 @@ def dispatch_whatsapp_on_create(sender, instance, created, **kwargs):
         connection.close()
         time.sleep(0.1)
         try:
-            result = send_whatsapp_message(to=phone, message=message)
+            if template_name:
+                result = send_whatsapp_template(
+                    to=phone,
+                    template_name=template_name,
+                    language_code=language_code,
+                    body_params=template_params,
+                )
+            else:
+                result = send_whatsapp_message(to=phone, message=message)
 
             if result["success"]:
                 Notification.objects.filter(pk=pk).update(

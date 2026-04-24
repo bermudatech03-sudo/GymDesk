@@ -467,7 +467,7 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
   //   → collect PT fee only at this step.
   // For existing member upgrade (basic→premium via newMemberId): plan already paid.
   //   → collect PT + diet at this step.
-  const feesToCollect = pendingMember
+  const feesToCollect = pendingMember || pendingRenewal
     ? ptFeeWithGst
     : ptFeeWithGst + dietWithGst;
 
@@ -876,9 +876,9 @@ function AssignmentModal({ assignment, allMembers, trainers, plans, onClose, onS
               {!isEdit && feesToCollect > 0 && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--text1)" }}>
-                    Collect PT{dietWithGst > 0 ? " + Diet" : ""} Fee Now
+                    Collect PT{!pendingRenewal && dietWithGst > 0 ? " + Diet" : ""} Fee Now
                   </div>
-                  {dietWithGst > 0 && (
+                  {!pendingRenewal && dietWithGst > 0 && (
                     <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 8 }}>
                       PT ₹{fmtD(ptFeeWithGst)} + Diet ₹{fmtD(dietWithGst)} = ₹{fmtD(feesToCollect)}
                     </div>

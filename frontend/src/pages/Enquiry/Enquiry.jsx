@@ -9,7 +9,7 @@ const STATUS_LABELS = {
   lost: { label: "Lost", cls: "badge-gray" },
 };
 
-const EMPTY_FORM = { name: "", phone: "", email: "", notes: "", status: "Follow-up" };
+const EMPTY_FORM = { name: "", phone: "", email: "", notes: "", status: "followup" };
 
 function EnquiryModal({ enquiry, onClose, onSave }) {
   const isEdit = !!enquiry?.id;

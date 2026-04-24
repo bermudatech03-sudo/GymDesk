@@ -1314,7 +1314,7 @@ export default function TrainerAssignments() {
                     <button className="btn btn-sm btn-primary"
                       disabled={!memberCoveredPT}
                       onClick={() => handlePayTrainerFee(a)}>
-                      Enroll ₹{ptAmt.toLocaleString("en-IN")}
+                      Pay ₹{ptAmt.toLocaleString("en-IN")}
                     </button>
                   )}
                   {pendingRenewalTrainer > 0 && (
@@ -1502,7 +1502,7 @@ export default function TrainerAssignments() {
                               title={!memberCoveredPT ? "Member hasn't paid enrollment PT fee yet" : `Pay ₹${ptAmt.toLocaleString("en-IN")} to ${a.trainer_name}`}
                               onClick={() => handlePayTrainerFee(a)}
                             >
-                              Enroll ₹{ptAmt.toLocaleString("en-IN")}
+                              Pay ₹{ptAmt.toLocaleString("en-IN")}
                             </button>
                           )
                         ) : null}

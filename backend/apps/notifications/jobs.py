@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta, datetime
 from django.utils import timezone
 from django.db.models import Q
@@ -5,6 +6,22 @@ from django.db.models import Sum
 from apps.notifications.utils import send_notification, send_notification_admin, send_staff_notification
 from apps.members.models import Member, MemberAttendance
 from apps.finances.models import ToBuy,Expenditure,Income
+
+logger = logging.getLogger(__name__)
+
+
+def run_auto_mark_absent():
+    """
+    Scheduled nightly (01:00 IST). Creates the attendance rows for yesterday that
+    the lazy calendar-fetch logic would otherwise miss if no one opened the page.
+    """
+    try:
+        from apps.staff.views import _auto_mark_absent_staff, _auto_mark_absent_members
+        _auto_mark_absent_staff()
+        _auto_mark_absent_members()
+        logger.info("run_auto_mark_absent: completed")
+    except Exception:
+        logger.exception("run_auto_mark_absent: failed")
 
 def send_renewal_reminders():
     # Fire exactly 3 days before the renewal date
@@ -54,6 +71,12 @@ def send_message_for_absentees():
 
 
 def send_message_for_pt_absentees():
+    """
+    Scheduled late in the day (22:00 IST by default). Sends an absent reminder to
+    any PT member whose scheduled session has already ENDED today and who never
+    checked in. Previously only fired if the session had STARTED which skipped
+    afternoon/evening sessions when the cron fired in the morning.
+    """
     from apps.members.models import TrainerAssignment
     today = timezone.localdate()
     now_time = timezone.localtime(timezone.now()).time()
@@ -74,7 +97,10 @@ def send_message_for_pt_absentees():
             continue
         if assignment.member_id in attended_ids:
             continue
-        if now_time < assignment.startingtime:
+        # Only notify once the session has ended — avoids premature alerts when
+        # the member might still show up.
+        end_time = getattr(assignment, "endingtime", None) or assignment.startingtime
+        if now_time < end_time:
             continue
         if assignment.member_id in notified_member_ids:
             continue
@@ -86,6 +112,12 @@ def send_message_for_pt_absentees():
 
 
 def send_staff_absent_notifications():
+    """
+    Scheduled late in the day (22:00 IST by default). Notifies any staff whose
+    shift has ENDED today without a valid check-in. Previously only fired at 10 AM
+    and skipped any shift starting after 10 AM — afternoon/evening staff were never
+    notified.
+    """
     from apps.staff.models import StaffMember, StaffAttendance
     today = timezone.localdate()
     now_time = timezone.localtime(timezone.now()).time()
@@ -105,7 +137,9 @@ def send_staff_absent_notifications():
         if shift:
             if weekday not in shift.working_days_list:
                 continue
-            if now_time < shift.start_time:
+            # Only notify after shift end — avoids early alerts while the person
+            # might still turn up for their shift.
+            if now_time < shift.end_time:
                 continue
         if staff.id in checked_in_ids:
             continue

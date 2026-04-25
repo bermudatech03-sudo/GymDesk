@@ -40,7 +40,7 @@ class FinanceSummaryView(APIView):
         all_base_income = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
         all_expense     = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
         net_savings     = all_base_income - all_expense
-        yearly_income  =  yearlyinc.aggregate(t=Sum("amount"))["t"] or 0
+        yearly_income  =  yearlyinc.aggregate(t=Sum("base_amount"))["t"] or 0
         
         # 12-month trend
         monthly = []
@@ -432,8 +432,8 @@ class CanAffordView(APIView):
         except ToBuy.DoesNotExist:
             return Response({"error": "Item not found"}, status=404)
 
-        income      = Income.objects.filter(date__year=year, date__month=month).aggregate(t=Sum("amount"))["t"] or 0
-        expenditure = Expenditure.objects.filter(date__year=year, date__month=month).aggregate(t=Sum("amount"))["t"] or 0
+        income      = Income.objects.aggregate(t=Sum("base_amount"))["t"] or 0
+        expenditure = Expenditure.objects.aggregate(t=Sum("amount"))["t"] or 0
         money_left  = income - expenditure
 
         return Response({

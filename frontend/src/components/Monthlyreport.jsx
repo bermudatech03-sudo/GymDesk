@@ -199,7 +199,7 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
         { v: `${incData.length} transaction${incData.length !== 1 ? "s" : ""}`, s: totalStyle("555555") },
         { v: Number(report.total_base || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
-        { v: Number(report.total_gst || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
+        { v: Number(report.total_gst_collected || 0), s: totalStyle("CC5500"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
         { v: Number(report.total_income_collected || 0), s: totalStyle("1A5C1A"), numFmt: '₹#,##0.00' },
         { v: "", s: totalStyle() },
@@ -435,9 +435,9 @@ export default function MonthlyReport({ defaultMonth, defaultYear, onClose }) {
                       <td colSpan={3}>TOTAL INCOME</td>
                       <td className="r s-green">{fmt(report.total_base)}</td>
                       <td className="c">—</td>
-                      <td className="r">{fmt(report.total_gst)}</td>
+                      <td className="r">{fmt(report.total_gst_collected)}</td>
                       <td className="r">—</td>
-                      <td className="r">{fmt(report.total_income)}</td>
+                      <td className="r">{fmt(report.total_income_collected)}</td>
                       <td className="c">—</td>
                     </tr>
                   </tbody>

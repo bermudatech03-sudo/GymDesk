@@ -29,7 +29,12 @@ export default function Login() {
 
       <div className="login-card animate-in">
         <div className="login-logo">
-          <div className="login-logo-mark">G</div>
+          <img 
+              src="/light-weight_fitness_logo.jpeg" 
+              alt="Light Weight Fitness Logo" 
+              className="login-logo-img"
+              style={{ width: "50px", height: "50px", borderRadius: "50%", objectFit: "cover" }}
+            />
           <div>
             <h3 className="login-logo-name">Light Weight Fitness </h3>
             <div className="login-logo-sub">Management System</div>

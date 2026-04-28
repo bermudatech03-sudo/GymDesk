@@ -66,7 +66,12 @@ export default function Layout() {
       )}
       <aside className={`sidebar ${mobileOpen ? "sidebar--mobile-open" : ""}`}>
         <div className="sidebar__logo">
-          <div className="sidebar__logo-mark">G</div>
+            <img 
+              src="/light-weight_fitness_logo.jpeg" 
+              alt="Light Weight Fitness Logo" 
+              className="login-logo-img"
+              style={{ width: "50px", height: "50px", borderRadius: "50%", objectFit: "cover" }}
+            />
           <div className="sidebar__logo-text">
             <span className="sidebar__logo-name">GymPro</span>
             <span className="sidebar__logo-sub">CRM</span>

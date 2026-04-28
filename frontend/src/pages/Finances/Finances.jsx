@@ -109,7 +109,6 @@ function FilterBar({ catFilter, setCatFilter, search, setSearch, cats, placehold
       padding: "12px 16px", borderBottom: "1px solid var(--border)",
       flexWrap: "wrap"
     }}>
-      {/* Search */}
       <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2"
@@ -124,7 +123,6 @@ function FilterBar({ catFilter, setCatFilter, search, setSearch, cats, placehold
           value={search} onChange={e => setSearch(e.target.value)}
           style={{ paddingLeft: 32, fontSize: 13 }} />
       </div>
-      {/* Category filter */}
       <select className="form-input" style={{ maxWidth: 180, fontSize: 13 }}
         value={catFilter} onChange={e => setCatFilter(e.target.value)}>
         <option value="all">All Categories</option>
@@ -303,17 +301,14 @@ export default function Finances() {
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
 
-  // ToBuy state
   const [toBuyItems, setToBuyItems] = useState([]);
-  const [toBuyModal, setToBuyModal] = useState(null); // null | "add" | item-object
+  const [toBuyModal, setToBuyModal] = useState(null);
   const [toBuyLoading, setToBuyLoading] = useState(false);
   const [affordResult, setAffordResult] = useState(null);
-  const [affordChecking, setAffordChecking] = useState(null); // item id being checked
+  const [affordChecking, setAffordChecking] = useState(null);
 
-  // Income filters
   const [incSearch, setIncSearch] = useState("");
   const [incCat, setIncCat] = useState("all");
-  // Expense filters
   const [expSearch, setExpSearch] = useState("");
   const [expCat, setExpCat] = useState("all");
 
@@ -331,7 +326,7 @@ export default function Finances() {
       ]);
       setSummary(s.data);
       setIncomes(i.data.results || i.data);
-      console.log(s.data)
+      console.log(s.data);
       setExpenses(e.data.results || e.data);
     } finally { setLoading(false); }
   }, [month, year]);
@@ -369,7 +364,6 @@ export default function Finances() {
 
   const fmt = v => `₹${Number(v || 0).toLocaleString("en-IN")}`;
 
-  // Apply income filters
   const filteredInc = incomes.filter(i => {
     const matchCat = incCat === "all" || i.category === incCat;
     const matchSearch = !incSearch ||
@@ -378,7 +372,6 @@ export default function Finances() {
     return matchCat && matchSearch;
   });
 
-  // Apply expense filters
   const filteredExp = expenses.filter(e => {
     const matchCat = expCat === "all" || e.category === expCat;
     const matchSearch = !expSearch ||
@@ -388,7 +381,6 @@ export default function Finances() {
     return matchCat && matchSearch;
   });
 
-  // Filtered totals
   const incTotal = filteredInc.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
   const expTotal = filteredExp.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
@@ -409,8 +401,58 @@ export default function Finances() {
     );
   };
 
+  // ── Mini stat card used inside groups ──
+  const MiniCard = ({ label, val, color }) => (
+    <div className="finance-mini-card" style={{
+      flex: "1 1 120px",
+      background: "var(--surface2)",
+      borderRadius: 10,
+      padding: "12px 14px",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      gap: 4,
+      minWidth: 120,
+    }}>
+      <div className="finance-mini-label" style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px", lineHeight: 1.3 }}>
+        {label}
+      </div>
+      <div className="finance-mini-val" style={{ fontSize: 17, fontFamily: "var(--font-mono)", fontWeight: 700, color: color || "var(--text1)" }}>
+        {val}
+      </div>
+    </div>
+  );
+
+  // ── Side stat card used in vertical right column ──
+  const SideCard = ({ label, val, color, icon }) => (
+    <div className="stat-card animate-in" style={{ flex: 1, minHeight: 0 }}>
+      <div className="icon" style={{
+        background: color + "18", color: color,
+        fontSize: 18, width: 38, height: 38
+      }}>{icon}</div>
+      <div className="label">{label}</div>
+      <div className="value" style={{ fontSize: 22, color: color }}>{val}</div>
+    </div>
+  );
+
   return (
     <div>
+      {/* Desktop-only styles for finance mini cards */}
+      <style>{`
+        @media (min-width: 769px) {
+          .finance-mini-card {
+            align-items: center;
+            text-align: center;
+            padding: 18px 16px !important;
+          }
+          .finance-mini-label {
+            font-size: 12px !important;
+          }
+          .finance-mini-val {
+            font-size: 22px !important;
+          }
+        }
+      `}</style>
       <div className="page-header">
         <div>
           <div className="page-title">Finances</div>
@@ -446,32 +488,102 @@ export default function Finances() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid-3" style={{ marginBottom: 20 }}>
-        {[
-          { label: "Yearly Income", val: fmt(summary?.yearly_income), color: "var(--accent)", icon: "↓" },
-          {
-            label: "Net Savings", val: fmt(summary?.net_savings),
-            color: (summary?.net_savings || 0) >= 0 ? "var(--teal)" : "var(--danger)", icon: "★"
-          },
-          { label: "Outstanding", val: fmt(summary?.outstanding_balance), color: "var(--warn)", icon: "⚠" },
-          { label: "Monthly Income To Be Collected", val: fmt(summary?.total_income_to_collect), color: "var(--accent)", icon: "↓" },
-          { label: "Monthly Income Without GST To be Collected", val: fmt(summary?.total_base_income_to_collect), color: "var(--accent)", icon: "↓" },
-          { label: "Monthly GST To Be Collected", val: fmt(summary?.total_gst_to_collect), color: "var(--accent)", icon: "↓" },
-          { label: "Monthly Income Collected", val: fmt(summary?.total_income), color: "var(--accent)", icon: "↓" },
-          { label: "Monthly Expense", val: fmt(summary?.total_expense), color: "var(--danger)", icon: "↑" },
-          { label: "Income w/o GST Collected", val: fmt(summary?.total_base_income), color: "var(--teal)", icon: "↓" },
+      {/* ── Summary Layout ── */}
+      <div style={{
+        display: "flex",
+        gap: 16,
+        marginBottom: 20,
+        alignItems: "stretch",
+        flexWrap: "wrap",
+      }}>
 
-        ].map(c => (
-          <div key={c.label} className="stat-card animate-in">
-            <div className="icon" style={{
-              background: c.color + "18", color: c.color,
-              fontSize: 18, width: 38, height: 38
-            }}>{c.icon}</div>
-            <div className="label">{c.label}</div>
-            <div className="value" style={{ fontSize: 22, color: c.color }}>{c.val}</div>
+        {/* LEFT: two grouped panels stacked, stretch to fill full height */}
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          flex: "2 1 340px",
+          minWidth: 0,
+        }}>
+
+          {/* Group 1: To Be Collected */}
+          <div style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+            padding: "14px 16px",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: "var(--accent)",
+              textTransform: "uppercase", letterSpacing: "0.6px",
+              marginBottom: 10, display: "flex", alignItems: "center", gap: 6
+            }}>
+              <span style={{
+                display: "inline-block", width: 7, height: 7,
+                borderRadius: "50%", background: "var(--accent)"
+              }} />
+              To Be Collected
+            </div>
+            <div style={{ display: "flex", gap: 10, flex: 1, flexWrap: "wrap" }}>
+              <MiniCard label="Total (with GST)" val={fmt(summary?.total_income_to_collect)} color="var(--accent)" />
+              <MiniCard label="Without GST" val={fmt(summary?.total_base_income_to_collect)} color="var(--accent)" />
+              <MiniCard label="GST Amount" val={fmt(summary?.total_gst_to_collect)} color="var(--accent)" />
+            </div>
           </div>
-        ))}
+
+          {/* Group 2: Collected */}
+          <div style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+            padding: "14px 16px",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: "var(--teal)",
+              textTransform: "uppercase", letterSpacing: "0.6px",
+              marginBottom: 10, display: "flex", alignItems: "center", gap: 6
+            }}>
+              <span style={{
+                display: "inline-block", width: 7, height: 7,
+                borderRadius: "50%", background: "var(--teal)"
+              }} />
+              Collected
+            </div>
+            <div style={{ display: "flex", gap: 10, flex: 1, flexWrap: "wrap" }}>
+              <MiniCard label="Total (with GST)" val={fmt(summary?.total_income)} color="var(--teal)" />
+              <MiniCard label="Without GST" val={fmt(summary?.total_base_income)} color="var(--teal)" />
+              {/* Placeholder to keep 3-col alignment with group above */}
+              <div style={{ flex: 1, minWidth: 120 }} />
+            </div>
+          </div>
+
+        </div>
+
+        {/* RIGHT: 4 vertical stat cards — equal height distribution */}
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          flex: "1 1 180px",
+          minWidth: 160,
+        }}>
+          <SideCard label="Yearly Income" val={fmt(summary?.yearly_income)} color="var(--accent)" icon="↓" />
+          <SideCard
+            label="Net Savings"
+            val={fmt(summary?.net_savings)}
+            color={(summary?.net_savings || 0) >= 0 ? "var(--teal)" : "var(--danger)"}
+            icon="★"
+          />
+          <SideCard label="Monthly Expense" val={fmt(summary?.total_expense)} color="var(--danger)" icon="↑" />
+          <SideCard label="Outstanding" val={fmt(summary?.outstanding_balance)} color="var(--warn)" icon="⚠" />
+        </div>
+
       </div>
 
       {/* Tabs */}
@@ -515,7 +627,6 @@ export default function Finances() {
             </ResponsiveContainer>
           )}
 
-          {/* Category breakdowns */}
           {summary && (
             <div className="grid-2" style={{ marginTop: 24, gap: 20 }}>
               {[
@@ -572,7 +683,6 @@ export default function Finances() {
             cats={INC_CATS}
             placeholder="Search source or notes…"
           />
-          {/* Filtered total */}
           <div style={{
             display: "flex", justifyContent: "space-between",
             padding: "8px 16px", fontSize: 12,

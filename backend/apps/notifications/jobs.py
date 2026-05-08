@@ -139,8 +139,8 @@ def send_staff_absent_notifications():
                 continue
             # Only notify after shift end — avoids early alerts while the person
             # might still turn up for their shift.
-            if now_time < shift.end_time:
-                continue
+            # if now_time < shift.end_time:
+            #     continue
         if staff.id in checked_in_ids:
             continue
         send_staff_notification(staff, "staff_absent")

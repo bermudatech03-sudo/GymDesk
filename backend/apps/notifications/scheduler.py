@@ -72,11 +72,11 @@ def start():
         id="send_message_for_pt_absentees", replace_existing=True,
     )
 
-    scheduler.add_job(
-        send_staff_absent_notifications,
-        trigger="cron", hour=22, minute=0,
-        id="send_staff_absent_notifications", replace_existing=True,
-    )
+    # scheduler.add_job(
+    #     send_staff_absent_notifications,
+    #     trigger="cron", hour=22, minute=0,
+    #     id="send_staff_absent_notifications", replace_existing=True,
+    # )
 
     scheduler.add_job(
         send_diet_notifications,
@@ -100,7 +100,7 @@ def start():
     # admins never open the calendar page.
     scheduler.add_job(
         run_auto_mark_absent,
-        trigger="cron", hour=1, minute=0,
+        trigger="cron", minute=0,
         id="run_auto_mark_absent", replace_existing=True,
     )
 

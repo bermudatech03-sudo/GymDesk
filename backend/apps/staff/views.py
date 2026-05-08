@@ -10,6 +10,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, time
 import datetime as dt
 import calendar
+from apps.notifications.utils import send_staff_notification
 
 from .models import StaffMember, StaffShift, StaffAttendance, StaffPayment
 from .serializers import (
@@ -61,32 +62,34 @@ def _delete_expense(staff, month):
 
 def _auto_mark_absent_staff():
     """
-    For every active staff member, check yesterday.
+    For every active staff member, check today.
     If no attendance record exists AND yesterday was a working day per their
-    shift template, AND the shift end+1hr has passed → mark auto_absent.
+    shift template, AND the shift start+1hr has passed → mark auto_absent.
     Called lazily on list/calendar fetches.
     """
-    yesterday = timezone.localdate() - timedelta(days=1)
+    today = timezone.localdate()
     now_time  = timezone.localtime(timezone.now()).time()   # IST local time
 
     for staff in StaffMember.objects.filter(status="active"):
         # Skip if record already exists
-        if StaffAttendance.objects.filter(staff=staff, date=yesterday).exists():
+        if StaffAttendance.objects.filter(staff=staff, date=today).exists():
             continue
 
         shift = staff.get_shift_template()
         if shift:
-            if not shift.is_working_day(yesterday):
+            if not shift.is_working_day(today):
                 continue
             # Only mark after shift_end + 1 hour today
-            cutoff = (datetime.combine(dt.date.today(), shift.end_time) + timedelta(hours=1)).time()
+            cutoff = (datetime.combine(dt.date.today(), shift.start_time) + timedelta(hours=1)).time()
             if now_time < cutoff:
                 continue
-        # No shift template → always mark absent for previous day
-        StaffAttendance.objects.get_or_create(
-            staff=staff, date=yesterday,
+        
+        _, created = StaffAttendance.objects.get_or_create(
+            staff=staff, date=today,
             defaults={"status": "auto_absent", "notes": "Auto-marked absent"},
         )
+        if created:
+            send_staff_notification(staff,"staff_absent")
 
 
 def _auto_mark_absent_members():
